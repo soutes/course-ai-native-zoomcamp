@@ -1,0 +1,37 @@
+[project]
+name = "weekly"
+version = "0.1.0"
+description = "Weekly retrospective across my GitHub project portfolio"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.1",
+    "rich>=13.7",
+    "httpx>=0.27",
+    "python-dotenv>=1.2.3",
+    "dj-database-url>=3.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-django>=4.14.0",
+    "ruff>=0.16.5",
+]
+
+# A Django project, not a distributable package.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+testpaths = ["tests", "portfolio"]
+python_files = ["test_*.py", "tests.py"]
+
+[tool.ruff]
+line-length = 100
+# extend-exclude, not exclude: replacing the default list would pull in .venv.
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ"]

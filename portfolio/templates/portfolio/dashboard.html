@@ -1,0 +1,72 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>weekly - portfolio</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 15px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+      max-width: 52rem; margin: 3rem auto; padding: 0 1.5rem;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: .2rem; }
+    h2 { font-size: 1rem; margin-top: 2.5rem; text-transform: uppercase;
+         letter-spacing: .08em; opacity: .6; }
+    .sub { opacity: .6; margin-top: 0; }
+    ul { list-style: none; padding: 0; }
+    li { padding: .5rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .repo { font-weight: 600; }
+    .goal { opacity: .7; }
+    .empty { opacity: .5; font-style: italic; }
+    .tag { font-size: .8rem; padding: .1rem .45rem; border-radius: .25rem;
+           border: 1px solid currentColor; opacity: .7; }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+  <h1>weekly</h1>
+  <p class="sub">A Monday-morning retrospective over a GitHub portfolio.</p>
+
+  <h2>Active projects ({{ active|length }})</h2>
+  <ul>
+    {% for project in active %}
+      <li>
+        <span class="repo">{{ project.repo }}</span>
+        <div class="goal">{{ project.goal|default:"no goal set" }}</div>
+      </li>
+    {% empty %}
+      <li class="empty">
+        Nothing tracked yet. Add a project in the <a href="/admin/">admin</a>.
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if ended %}
+    <h2>Ended ({{ ended|length }})</h2>
+    <ul>
+      {% for project in ended %}
+        <li>
+          <span class="repo">{{ project.repo }}</span>
+          <span class="tag">{{ project.get_status_display }}</span>
+          <div class="goal">{{ project.status_reason }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h2>Triage history</h2>
+  <ul>
+    {% for run in runs %}
+      <li>
+        <span class="repo">{{ run.ran_at|date:"Y-m-d H:i" }}</span>
+        &mdash; {{ run.decisions.count }} repo{{ run.decisions.count|pluralize }} made private
+      </li>
+    {% empty %}
+      <li class="empty">
+        No triage applied yet. Run <code>manage.py triage</code> to see the plan.
+      </li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
