@@ -1,6 +1,10 @@
 `weekly` is a Django app that reads GitHub history and produces a Monday-morning
 retrospective over a project portfolio. See [SPEC.md](SPEC.md) for why, [backlog.md](backlog.md) for what is next.
 
+Documents
+
+- `docs/process.md` - how work is organized
+
 Commands
 
 - `uv sync` - install dependencies

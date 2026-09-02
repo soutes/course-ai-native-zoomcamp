@@ -3,4 +3,4 @@
 
 Roles
 
-- PM - grooms a task before anyone implements it, follows _docs/team/pm.md
+- PM - grooms a task before anyone implements it, follows `docs/team/pm.md`
