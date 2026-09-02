@@ -9,6 +9,8 @@ spec.
 Status: `[ ]` todo · `[x]` done · `[~]` in progress
 
 Every task has a matching GitHub issue with the same number: task 14 is issue #14.
+Tasks are worked top to bottom, which is not the same as numeric order - a task split out
+of grooming later gets a higher number but stays inside the phase it belongs to.
 
 ---
 
@@ -69,6 +71,12 @@ Every task has a matching GitHub issue with the same number: task 14 is issue #1
 - [ ] **17. Retro web page.** ([#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17))
   A Django view and template for one week's retro, with a list of past weeks. Done when the
   same report readable in the terminal is readable at `/retro/2026-W36/`.
+- [ ] **33. New repos this week.** ([#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33))
+  A repo created during the reported week gets its own callout. Done when a week with a new
+  repo says so, and a week without one shows nothing.
+- [ ] **36. Current-week dashboard page.** ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
+  A landing page at `/` showing the current week, not only the project list. Done when the
+  page renders from stored data with no network call.
 
 ## Phase 2 — Health and lifecycle
 
@@ -81,6 +89,9 @@ Every task has a matching GitHub issue with the same number: task 14 is issue #1
 - [ ] **20. Shipped auto-detection.** ([#20](https://github.com/soutes/course-ai-native-zoomcamp/issues/20))
   A release, a tag, or a `Status: Complete` README line also counts as shipped. Done when a
   released repo drops out without any manual step.
+- [ ] **34. `projects` management command.** ([#34](https://github.com/soutes/course-ai-native-zoomcamp/issues/34))
+  List tracked, paused, shipped and dropped projects. Done when the portfolio is readable
+  without the admin, with no network call.
 
 ## Phase 3 — Memory
 
@@ -92,6 +103,9 @@ Every task has a matching GitHub issue with the same number: task 14 is issue #1
   one-day burst and a five-day habit with equal commit counts read differently.
 - [ ] **23. Abandoned counter in the header.** ([#23](https://github.com/soutes/course-ai-native-zoomcamp/issues/23))
   `2 projects with no commit for 4+ weeks`. Done when the count appears above the sections.
+- [ ] **35. `report --last`, reprint from storage.** ([#35](https://github.com/soutes/course-ai-native-zoomcamp/issues/35))
+  Reprint the most recent report. No network, no LLM, no token. Done when it renders with
+  both keys unset.
 
 ## Phase 4 — Coaching
 
@@ -135,4 +149,4 @@ Every task has a matching GitHub issue with the same number: task 14 is issue #1
 - [x] **Tests run with `uv run pytest`.**
 - [x] **Linting with `uv run ruff check .` and `uv run ruff format .`.**
 - [x] **README documents setup, the token, and every command.**
-- [ ] **A dashboard page showing the current week, not only the project list.**
+- [ ] **A dashboard page showing the current week, not only the project list.** - now task 36 ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
