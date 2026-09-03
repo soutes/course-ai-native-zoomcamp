@@ -109,7 +109,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 
 ## Phase 4 — Coaching
 
-- [ ] **24. OpenAI-compatible client pointed at Groq.** ([#24](https://github.com/soutes/course-ai-native-zoomcamp/issues/24))
+- [x] **24. OpenAI-compatible client pointed at Groq.** ([#24](https://github.com/soutes/course-ai-native-zoomcamp/issues/24))
   Base URL, model, and key all from the environment; no vendor hardcoded. Done when the same
   code would run against another provider by changing env vars only.
 - [ ] **25. One batched call for the whole portfolio.** ([#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25))
