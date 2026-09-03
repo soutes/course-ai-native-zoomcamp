@@ -158,3 +158,5 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [ ] **39. CI polish: `manage.py check`, README badge, branch protection.** ([#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)) `post-mvp`
   Out of scope split from #37 while grooming. Branch protection is a repo-settings change the
   owner makes by hand, not an agent write.
+- [ ] **40. `seed_demo`: seed `RepoWeek` and `WeeklyReport` once #13/#16/#36 land.** ([#40](https://github.com/soutes/course-ai-native-zoomcamp/issues/40)) `post-mvp`
+  Out of scope split from #38 while grooming - those models don't exist yet. See decisions.md D7.
