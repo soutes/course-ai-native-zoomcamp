@@ -648,3 +648,52 @@ would be treated as auto-provenance - accepted as a naming convention, not a bul
 same way #18/#19 already lean on plain-string conventions elsewhere in this codebase.
 
 **Applies to:** [#20](https://github.com/soutes/course-ai-native-zoomcamp/issues/20)
+
+---
+
+## D19 - #21's "previous week" is new code, not literal reuse of #11; the `RepoWeek` lookup follows the `stalled_lookup.py` split
+
+**Question:** #21's filed body said "Previous-week arithmetic reuses #11," but #11
+(`portfolio/services/week.py`) only ships `week_window` (label -> window) and
+`week_label` (window -> label) - there is no "week label N-1" function anywhere in the
+codebase today. Read literally, "reuses #11" could be misread as "the function already
+exists, just call it," which it does not; getting the calendar-previous ISO week label
+right across a year boundary (`2027-W01` -> `2026-W52`, not `2027-W00`) needs its own
+date arithmetic, the same `date.fromisocalendar` shape `week_window` already uses, not a
+generic `week - 1` string operation. Separately, #21's Constraints said the calculation
+lives in `portfolio/services/`, "no Django and no LLM," but the previous week's numbers
+have to come from a `RepoWeek` row - a Django model - so a literal read of "no Django in
+the calculation" would make the AC unimplementable inside a single pure function, the
+same shape of problem D15/D18 already found in other issues' filed claims.
+
+**Decision:**
+1. `previous_week_label(week: str) -> str` is a new function added to
+   `portfolio/services/week.py`, alongside `week_window`/`week_label` (same file, same
+   pure-stdlib style: resolve `week`'s Monday via `date.fromisocalendar`, subtract 7
+   days, read the ISO year/week off the result via `.isocalendar()` - which is exactly
+   what makes the year-boundary case correct for free, the same mechanism `week_window`
+   already relies on). It is new code #21 adds, not a call into something #11 already
+   built.
+2. The delta math itself (`current - previous`, and the "first week tracked" vs.
+   "last week: 0" distinction) is a pure function taking plain numbers/`None`, no Django,
+   no LLM - this is what "the calculation" in #21's Constraints means.
+3. Reading the previous week's `RepoWeek` row is a **Django-aware companion module** in
+   `portfolio/services/`, following the split `stalled_lookup.py` already established for
+   #14 (a pure `stalled.py` plus a Django-aware `stalled_lookup.py` that queries
+   `RepoWeek` and hands plain values to it). #21 either adds a sibling function to
+   `stalled_lookup.py` or a new small module next to it - an engineer's implementation
+   choice, not a decision this grooming pass needs to fix - but it does **not** put a
+   `RepoWeek.objects` query inside `portfolio/services/render.py`, which stays
+   Django-free per `AGENTS.md`.
+
+**Reason:** "Reuses #11" as filed would have an engineer either invent the year-boundary
+arithmetic inline wherever deltas are computed (duplicating `week_window`'s
+`fromisocalendar` logic) or go looking for a function that isn't there. Naming the split
+explicitly - new pure date helper, pure delta math, Django-aware lookup mirroring an
+already-shipped pattern - keeps #21 buildable without an engineer having to rediscover
+the `stalled_lookup.py` precedent mid-implementation.
+
+**Cost accepted:** None - this only writes down a design #14 already established and
+that #21 was always going to need; no scope changes.
+
+**Applies to:** [#21](https://github.com/soutes/course-ai-native-zoomcamp/issues/21), [#11](https://github.com/soutes/course-ai-native-zoomcamp/issues/11)
