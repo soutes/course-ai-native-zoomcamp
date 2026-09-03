@@ -115,7 +115,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **25. One batched call for the whole portfolio.** ([#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25))
   Commit subjects and diffstat numbers only, never full diffs; capped per repo. Done when a
   report with eight repos makes exactly one request.
-- [ ] **26. Strict JSON with per-repo fallback.** ([#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26))
+- [x] **26. Strict JSON with per-repo fallback.** ([#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26))
   A malformed or missing key degrades one repo, never the whole report. Done when a corrupted
   response still renders a complete report.
 - [ ] **27. `--no-llm` flag.** ([#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27))
