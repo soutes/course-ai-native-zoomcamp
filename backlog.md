@@ -112,7 +112,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **24. OpenAI-compatible client pointed at Groq.** ([#24](https://github.com/soutes/course-ai-native-zoomcamp/issues/24))
   Base URL, model, and key all from the environment; no vendor hardcoded. Done when the same
   code would run against another provider by changing env vars only.
-- [ ] **25. One batched call for the whole portfolio.** ([#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25))
+- [x] **25. One batched call for the whole portfolio.** ([#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25))
   Commit subjects and diffstat numbers only, never full diffs; capped per repo. Done when a
   report with eight repos makes exactly one request.
 - [ ] **26. Strict JSON with per-repo fallback.** ([#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26))
