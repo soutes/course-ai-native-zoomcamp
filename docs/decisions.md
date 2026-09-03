@@ -473,3 +473,51 @@ hedge.
 cover. That edit belongs to #29's own acceptance criteria, not to #42.
 
 **Applies to:** [#42](https://github.com/soutes/course-ai-native-zoomcamp/issues/42), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29)
+
+---
+
+## D15 - Only three of #18's five health signals come from the tree fetch
+
+**Question:** #18's filed body said "detection reads the repo tree in one
+request" for all five signals (README, tests, CI, license, description), but
+a `git/trees/{default}?recursive=1` response is a file listing - it cannot
+produce a repo's description, which is not a file at all. `Repo.license` and
+`Repo.description` are also already populated for every tracked repo by
+`GitHub.my_repos()` (`github.py:_to_repo`, reading the repos-list response's
+own `license.spdx_id` and `description` fields) - zero extra requests. A
+literal reading of "one request" would have an engineer re-derive license
+and description from the tree (description is impossible; license would mean
+scanning for a `LICENSE` file, which is weaker than GitHub's own license
+detector - it recognizes license text in files GitHub names differently).
+Separately, `GitHub.has_readme()` already exists (one request per repo,
+`github.py:254`) and backs triage's shipped Phase 0 classifier (#4) - #18
+naming README detection among its tree-based signals could be read as
+replacing that call, which would touch already-shipped code for a Phase 2
+issue with no requirement to do so.
+
+**Decision:** Of #18's five signals, only **README, tests-directory, and
+CI-config** come from the single tree fetch - these are the three that
+depend on directory layout GitHub's repo metadata doesn't expose. **License**
+and **description** reuse the existing `Repo.license`/`Repo.description`
+fields (already fetched, zero additional requests); "no license" is
+`Repo.license` falsy, "no description" is `Repo.description` falsy. #18's
+tree-based README check is new logic in its own health-signals module (not
+`triage.py`), separate from and not a replacement for `GitHub.has_readme()` -
+that call and everything that reads it (#4's classifier) is untouched.
+
+**Reason:** A description cannot be read from a file tree under any
+interpretation, so the AC as filed was unimplementable literally for that
+one signal. Reusing already-fetched fields for license/description costs
+nothing and avoids a weaker, redundant filename-based license check.
+Leaving `has_readme()` and triage alone keeps this Phase 2 issue from
+touching Phase 0 code it has no acceptance criterion requiring it to change.
+
+**Cost accepted:** Two near-duplicate "does a README exist" checks now exist
+in the codebase - triage's `has_readme()` (single GET) and #18's tree-parsed
+version (part of the one-request tree read). Acceptable: they serve
+different callers with different cost profiles (triage already pays for its
+own GET; #18 gets README for free as a side effect of the tree fetch it
+needs for tests/CI anyway), and merging them is a refactor with no
+acceptance criterion asking for it.
+
+**Applies to:** [#18](https://github.com/soutes/course-ai-native-zoomcamp/issues/18), [#4](https://github.com/soutes/course-ai-native-zoomcamp/issues/4)
