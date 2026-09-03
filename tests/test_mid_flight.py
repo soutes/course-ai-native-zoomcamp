@@ -28,6 +28,16 @@ def raw_branch(name, sha=None):
     return {"name": name, "commit": {"sha": sha, "url": f"https://api.github.com/x/{sha}"}}
 
 
+def raw_compare(ahead_by, behind_by=0, last_commit_date=None):
+    """A `compare` response shape - only what `unmerged_branches` reads:
+    `ahead_by`/`behind_by`, and `commits`, whose last entry supplies the
+    branch's own most recent commit date."""
+    commits = []
+    if last_commit_date is not None:
+        commits = [{"commit": {"author": {"date": last_commit_date}}}]
+    return {"ahead_by": ahead_by, "behind_by": behind_by, "commits": commits}
+
+
 def raw_pull(number, *, login="me", draft=False, title="Add widget", created_at=None):
     return {
         "number": number,
@@ -38,12 +48,11 @@ def raw_pull(number, *, login="me", draft=False, title="Add widget", created_at=
     }
 
 
-def route_handler(*, branches, commit_dates, compares, pulls, calls=None):
+def route_handler(*, branches, compares, pulls, calls=None):
     """Dispatches a fake transport by URL path/params, covering every endpoint
-    `unmerged_branches`/`open_pull_requests` touches: the branch list, each
-    branch's `/commits/{sha}` date lookup, `/compare/{base}...{head}`, and
-    `/pulls?state=open`. `calls`, if given, collects every request path seen -
-    used to assert the D3 compare-call bound.
+    `unmerged_branches`/`open_pull_requests` touches: the branch list,
+    `/compare/{base}...{head}`, and `/pulls?state=open`. `calls`, if given,
+    collects every request path seen - used to assert the D8 request bound.
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -55,14 +64,9 @@ def route_handler(*, branches, commit_dates, compares, pulls, calls=None):
             page = int(request.url.params.get("page", "1"))
             return httpx.Response(200, json=branches if page == 1 else [])
 
-        if "/commits/" in path:
-            sha = path.rsplit("/", 1)[-1]
-            date = commit_dates.get(sha, "2020-01-01T00:00:00Z")
-            return httpx.Response(200, json={"sha": sha, "commit": {"author": {"date": date}}})
-
         if "/compare/" in path:
             head = path.rsplit("...", 1)[-1]
-            return httpx.Response(200, json=compares.get(head, {"ahead_by": 0, "behind_by": 0}))
+            return httpx.Response(200, json=compares.get(head, raw_compare(0, 0)))
 
         if path.endswith("/pulls"):
             page = int(request.url.params.get("page", "1"))
@@ -81,8 +85,7 @@ def test_default_branch_is_never_listed_as_unmerged():
     calls: list[str] = []
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-feature-x": "2026-08-30T00:00:00Z"},
-        compares={"feature-x": {"ahead_by": 2, "behind_by": 0}},
+        compares={"feature-x": raw_compare(2, last_commit_date="2026-08-30T00:00:00Z")},
         pulls=[],
         calls=calls,
     )
@@ -99,8 +102,9 @@ def test_branch_ahead_and_not_behind_is_included_with_ahead_count_and_age():
     last_commit = NOW - timedelta(days=3)
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-feature-x": last_commit.strftime("%Y-%m-%dT%H:%M:%SZ")},
-        compares={"feature-x": {"ahead_by": 4, "behind_by": 0}},
+        compares={
+            "feature-x": raw_compare(4, last_commit_date=last_commit.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        },
         pulls=[],
     )
     gh = make_gh(handler)
@@ -116,8 +120,7 @@ def test_diverged_branch_ahead_and_behind_is_still_included():
     branches = [raw_branch("main"), raw_branch("diverged")]
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-diverged": "2026-08-20T00:00:00Z"},
-        compares={"diverged": {"ahead_by": 2, "behind_by": 5}},
+        compares={"diverged": raw_compare(2, behind_by=5, last_commit_date="2026-08-20T00:00:00Z")},
         pulls=[],
     )
     gh = make_gh(handler)
@@ -131,8 +134,7 @@ def test_branch_behind_but_not_ahead_is_excluded():
     branches = [raw_branch("main"), raw_branch("stale")]
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-stale": "2020-01-01T00:00:00Z"},
-        compares={"stale": {"ahead_by": 0, "behind_by": 5}},
+        compares={"stale": raw_compare(0, behind_by=5, last_commit_date="2020-01-01T00:00:00Z")},
         pulls=[],
     )
     gh = make_gh(handler)
@@ -146,8 +148,7 @@ def test_branch_identical_to_default_is_excluded():
     branches = [raw_branch("main"), raw_branch("same")]
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-same": "2026-08-20T00:00:00Z"},
-        compares={"same": {"ahead_by": 0, "behind_by": 0}},
+        compares={"same": raw_compare(0, behind_by=0)},
         pulls=[],
     )
     gh = make_gh(handler)
@@ -157,23 +158,20 @@ def test_branch_identical_to_default_is_excluded():
     assert result == []
 
 
-def test_at_most_20_most_recently_pushed_branches_are_compared():
-    """D3: 25 non-default branches exist; only the 20 most-recently-committed
-    are ever compared, and the 5 oldest-committed never see a compare call."""
+def test_at_most_20_branches_are_compared_and_total_requests_stay_bounded():
+    """D8 (amending D3): a 40-branch repo must cost at most ~2 list-pagination
+    requests plus 20 `compare` calls - not one request per branch to sort by
+    recency first. Only the first 20 non-default branches, in the order the
+    branches API returns them, are ever compared; there is no recency sort."""
     branches = [raw_branch("main")]
-    commit_dates = {}
     compares = {}
-    for i in range(25):
+    for i in range(40):
         name = f"b{i:02d}"
-        sha = f"sha-{name}"
-        branches.append(raw_branch(name, sha=sha))
-        commit_dates[sha] = (NOW - timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        compares[name] = {"ahead_by": 1, "behind_by": 0}
+        branches.append(raw_branch(name))
+        compares[name] = raw_compare(1, last_commit_date="2026-08-01T00:00:00Z")
 
     calls: list[str] = []
-    handler = route_handler(
-        branches=branches, commit_dates=commit_dates, compares=compares, pulls=[], calls=calls
-    )
+    handler = route_handler(branches=branches, compares=compares, pulls=[], calls=calls)
     gh = make_gh(handler)
 
     result = gh.unmerged_branches("me/demo", default_branch="main")
@@ -181,10 +179,10 @@ def test_at_most_20_most_recently_pushed_branches_are_compared():
     compare_calls = [c for c in calls if "/compare/" in c]
     assert len(compare_calls) == BRANCH_COMPARE_CAP == 20
     assert len(result) == 20
-    # the 5 oldest (largest i, oldest date) never got compared
-    compared_names = {b.name for b in result}
-    for i in range(20, 25):
-        assert f"b{i:02d}" not in compared_names
+    # bounded total: at most 2 branch-list pages + 20 compares, well under 40
+    assert len(calls) <= 22
+    # the first 20 branches in API order are compared, not a recency subset
+    assert {b.name for b in result} == {f"b{i:02d}" for i in range(20)}
 
 
 # --- open_pull_requests ----------------------------------------------------------
@@ -192,9 +190,7 @@ def test_at_most_20_most_recently_pushed_branches_are_compared():
 
 def test_draft_prs_are_included_and_marked():
     pulls = [raw_pull(5, login="me", draft=True, title="WIP thing")]
-    handler = route_handler(
-        branches=[raw_branch("main")], commit_dates={}, compares={}, pulls=pulls
-    )
+    handler = route_handler(branches=[raw_branch("main")], compares={}, pulls=pulls)
     gh = make_gh(handler)
 
     (pr,) = gh.open_pull_requests("me/demo", github_user="me")
@@ -205,9 +201,7 @@ def test_draft_prs_are_included_and_marked():
 
 def test_prs_opened_by_someone_else_are_excluded():
     pulls = [raw_pull(1, login="me"), raw_pull(2, login="someone-else")]
-    handler = route_handler(
-        branches=[raw_branch("main")], commit_dates={}, compares={}, pulls=pulls
-    )
+    handler = route_handler(branches=[raw_branch("main")], compares={}, pulls=pulls)
     gh = make_gh(handler)
 
     result = gh.open_pull_requests("me/demo", github_user="me")
@@ -217,9 +211,7 @@ def test_prs_opened_by_someone_else_are_excluded():
 
 def test_pr_author_match_is_case_insensitive():
     pulls = [raw_pull(1, login="ME")]
-    handler = route_handler(
-        branches=[raw_branch("main")], commit_dates={}, compares={}, pulls=pulls
-    )
+    handler = route_handler(branches=[raw_branch("main")], compares={}, pulls=pulls)
     gh = make_gh(handler)
 
     result = gh.open_pull_requests("me/demo", github_user="me")
@@ -234,9 +226,7 @@ def test_pr_carries_title_and_age_in_days():
             9, login="me", title="Fix the thing", created_at=created.strftime("%Y-%m-%dT%H:%M:%SZ")
         )
     ]
-    handler = route_handler(
-        branches=[raw_branch("main")], commit_dates={}, compares={}, pulls=pulls
-    )
+    handler = route_handler(branches=[raw_branch("main")], compares={}, pulls=pulls)
     gh = make_gh(handler)
 
     (pr,) = gh.open_pull_requests("me/demo", github_user="me")
@@ -249,7 +239,7 @@ def test_pr_carries_title_and_age_in_days():
 
 
 def test_repo_with_no_branches_beyond_default_and_no_open_prs_returns_two_empty_lists():
-    handler = route_handler(branches=[raw_branch("main")], commit_dates={}, compares={}, pulls=[])
+    handler = route_handler(branches=[raw_branch("main")], compares={}, pulls=[])
     gh = make_gh(handler)
 
     assert gh.unmerged_branches("me/demo", default_branch="main") == []
@@ -267,8 +257,7 @@ def test_unmerged_branches_and_open_prs_are_cached_a_rerun_costs_zero_requests(s
     branches = [raw_branch("main"), raw_branch("feature-x")]
     handler = route_handler(
         branches=branches,
-        commit_dates={"sha-feature-x": "2026-08-20T00:00:00Z"},
-        compares={"feature-x": {"ahead_by": 1, "behind_by": 0}},
+        compares={"feature-x": raw_compare(1, last_commit_date="2026-08-20T00:00:00Z")},
         pulls=[raw_pull(1, login="me")],
         calls=calls,
     )

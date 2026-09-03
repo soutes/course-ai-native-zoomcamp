@@ -20,7 +20,7 @@ from .types import Commit, CommitStat, OpenPullRequest, Repo, UnmergedBranch
 
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
-BRANCH_COMPARE_CAP = 20  # docs/decisions.md D3
+BRANCH_COMPARE_CAP = 20  # docs/decisions.md D8 (amends D3)
 
 
 class GitHubError(RuntimeError):
@@ -276,7 +276,7 @@ class GitHub:
 
         GitHub's response here is name + head `commit.sha` only - no push
         date - so it cannot alone answer "most recently pushed". See
-        `unmerged_branches` for how the D3 bound is applied on top of this.
+        `unmerged_branches` for how the D8 bound is applied on top of this.
         """
         result: list[dict[str, Any]] = []
         page = 1
@@ -289,18 +289,6 @@ class GitHub:
                 return result
             page += 1
 
-    def _commit_date(self, full_name: str, sha: str) -> datetime:
-        """A commit's authored date, via the same cached `/commits/{sha}`
-        endpoint `commit_diffstat` uses - a branch head that #13 already
-        looked up this run costs nothing extra here."""
-        data = self._cached_json(f"/repos/{full_name}/commits/{sha}")
-        commit = data.get("commit") or {}
-        author = commit.get("author") or {}
-        date_str = author.get("date") or (commit.get("committer") or {}).get("date")
-        if not date_str:
-            return datetime.fromtimestamp(0, tz=UTC)
-        return _parse_dt(date_str)
-
     def unmerged_branches(self, full_name: str, default_branch: str) -> list[UnmergedBranch]:
         """Branches ahead of default and not merged into it - mid-flight work (#15).
 
@@ -308,38 +296,51 @@ class GitHub:
         ahead of default (``ahead_by == 0``) is stale, not mid-flight, and is
         excluded - this also drops a branch identical to default.
 
-        Bounded per D3: GitHub's branches list carries no per-branch push
-        date, so recency is read from each branch's head commit via
-        `_commit_date` - one lightweight, cached request per branch, far
-        cheaper than a `compare` call. Branches are sorted by that date and
-        only the 20 most-recently-committed non-default ones (D3) go on to a
-        `compare` call at all; the request bound this protects is the heavier
-        `compare` request, not the branch listing or the date lookups.
+        Bounded per D8 (amending D3): GitHub's branches list carries no
+        per-branch push date, and fetching one costs one extra request per
+        branch - for a 40-branch repo that is 40 requests just to *order*
+        them, before any `compare` call, which is worse than the 40 requests
+        the bound exists to prevent. So there is no recency sort: only the
+        first 20 non-default branches, in whatever order
+        `GET /repos/{owner}/{repo}/branches` returns them, are ever compared.
+        A repo's total cost here is at most ~2 list-pagination requests plus
+        20 `compare` calls, regardless of how many branches it has.
+
+        ``last_commit_at`` comes from the `compare` response itself (the
+        newest entry in its `commits` list) rather than a separate request,
+        so the 20 `compare` calls remain the only per-branch cost.
         """
         raw = self.branches(full_name)
-        candidates: list[tuple[str, str, datetime]] = []
-        for b in raw:
-            name = b["name"]
-            if name == default_branch:
-                continue
-            sha = (b.get("commit") or {}).get("sha")
-            if not sha:
-                continue
-            candidates.append((name, sha, self._commit_date(full_name, sha)))
-
-        candidates.sort(key=lambda c: c[2], reverse=True)
-        top = candidates[:BRANCH_COMPARE_CAP]
+        names = [b["name"] for b in raw if b["name"] != default_branch]
+        top = names[:BRANCH_COMPARE_CAP]
 
         unmerged: list[UnmergedBranch] = []
-        for name, _sha, last_commit_at in top:
+        for name in top:
             compare = self._cached_json(f"/repos/{full_name}/compare/{default_branch}...{name}")
             ahead_by = compare.get("ahead_by", 0)
             if ahead_by == 0:
                 continue  # behind-or-identical: stale, not mid-flight
             unmerged.append(
-                UnmergedBranch(name=name, ahead_by=ahead_by, last_commit_at=last_commit_at)
+                UnmergedBranch(
+                    name=name,
+                    ahead_by=ahead_by,
+                    last_commit_at=self._last_commit_date(compare),
+                )
             )
         return unmerged
+
+    @staticmethod
+    def _last_commit_date(compare: dict[str, Any]) -> datetime:
+        """The newest commit date in a `compare` response's `commits` list -
+        that list's last entry is the branch's own most recent commit."""
+        commits = compare.get("commits") or []
+        if not commits:
+            return datetime.fromtimestamp(0, tz=UTC)
+        commit = (commits[-1].get("commit") or {}).get("author") or {}
+        date_str = commit.get("date")
+        if not date_str:
+            return datetime.fromtimestamp(0, tz=UTC)
+        return _parse_dt(date_str)
 
     def open_pull_requests(self, full_name: str, github_user: str) -> list[OpenPullRequest]:
         """Open PRs I opened in this repo - mid-flight work (#15).
