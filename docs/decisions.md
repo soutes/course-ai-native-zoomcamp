@@ -143,3 +143,19 @@ only mvp issue that ever holds the full computed picture in one place, so it
 is the only one that can write it down.
 
 **Applies to:** [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16), [#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17), [#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33), [#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36)
+
+---
+
+## D6 - No agent runs `--apply` against a real GitHub account, ever, without the owner's in-the-moment authorization
+
+**Question:** Issue #7's last acceptance criterion is "verified against a live account with a real token." No `GITHUB_TOKEN` exists in this environment, and `--apply` is the one command in this app that writes to GitHub for real (`PATCH .../{owner}/{repo}` with `private: true`) - a hard-to-reverse, account-changing action.
+
+**Decision:** An agent (this session or any future automated run) never runs `--apply` against a real account on its own, even with `--yes`, even if a token happens to be present. The account owner runs that verification themselves, at a time of their choosing. Gate 3 / issue #7 close on everything else - the confirm/abort flow, the write itself, the warnings, the counts, the exit codes - all verified by code reading and a passing test suite with a faked GitHub client. The live check is left as a standing manual step for the owner, not a blocking follow-up issue.
+
+Asked explicitly during this run whether this should become a permanent product change - `--apply` never writes even with the owner's own confirmation, only ever recording a suggestion the owner applies by hand outside the tool - the owner said no, this is about right now only. `--apply`'s existing design (list -> warn -> prompt -> write) stands as specified in `AGENTS.md` and `SPEC.md`.
+
+**Reason:** Flipping a real repository private is the kind of action that needs a human, present, choosing to do it - not a scheduled or agent-driven run deciding on their behalf, regardless of how much test coverage backs the code path.
+
+**Cost accepted:** Issue #7's backlog checkbox and issue close reflect "code correct and tested," not "verified running end-to-end" in the strict sense `AGENTS.md` Working normally requires. That gap is intentional and owner-acknowledged, not an oversight.
+
+**Applies to:** [#7](https://github.com/soutes/course-ai-native-zoomcamp/issues/7)

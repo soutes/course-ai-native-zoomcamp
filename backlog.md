@@ -35,7 +35,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **6. `triage` management command, dry run by default.** ([#6](https://github.com/soutes/course-ai-native-zoomcamp/issues/6))
   `manage.py triage` prints the plan and changes nothing. Done when the three piles render
   with repo name, age, and reasons.
-- [~] **7. `--apply` makes the HIDE pile private.** ([#7](https://github.com/soutes/course-ai-native-zoomcamp/issues/7))
+- [x] **7. `--apply` makes the HIDE pile private.** ([#7](https://github.com/soutes/course-ai-native-zoomcamp/issues/7))
   Print the stars/forks and contribution-graph warnings, prompt for confirmation, then
   `PATCH /repos/{owner}/{repo}` with `private: true`. Never deletes, never archives.
   Done when a decision is applied and recorded.
