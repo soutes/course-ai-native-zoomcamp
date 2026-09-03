@@ -138,7 +138,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 
 - [x] **31. `year` command and page.** ([#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31))
   Shipped, dropped, and silent side by side. Done when a full year renders from stored data.
-- [ ] **32. Time-to-decision.** ([#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32))
+- [x] **32. Time-to-decision.** ([#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32))
   How many silent weeks passed before a project was admitted over. Done when the number
   appears next to each dropped project.
 
