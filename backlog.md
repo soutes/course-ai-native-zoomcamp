@@ -89,7 +89,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **20. Shipped auto-detection.** ([#20](https://github.com/soutes/course-ai-native-zoomcamp/issues/20))
   A release, a tag, or a `Status: Complete` README line also counts as shipped. Done when a
   released repo drops out without any manual step.
-- [ ] **34. `projects` management command.** ([#34](https://github.com/soutes/course-ai-native-zoomcamp/issues/34))
+- [x] **34. `projects` management command.** ([#34](https://github.com/soutes/course-ai-native-zoomcamp/issues/34))
   List tracked, paused, shipped and dropped projects. Done when the portfolio is readable
   without the admin, with no network call.
 
