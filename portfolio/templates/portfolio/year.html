@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>weekly - {{ year }}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --border: #e5e3df;
+      --text: #1c1a17;
+      --muted: #6b6862;
+      --accent: #2563eb;
+      --radius: .6rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161513;
+        --surface: #1e1c19;
+        --border: #33302b;
+        --text: #f2f0ec;
+        --muted: #9c988f;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 5rem;
+    }
+
+    header.top { display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 1.75rem; flex-wrap: wrap; gap: .5rem; }
+    header.top a.brand { font-weight: 700; font-size: 1.1rem; color: var(--text);
+      text-decoration: none; letter-spacing: -.02em; }
+    header.top nav a { color: var(--muted); text-decoration: none; font-size: .9rem;
+      margin-left: 1rem; }
+    header.top nav a:hover { color: var(--accent); }
+
+    h1 { font-size: 1.5rem; margin: 0 0 .15rem; letter-spacing: -.01em; }
+    .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: .92rem; }
+
+    /* Shipped and dropped deliberately share this one heading style - same
+       weight, same color, same layout - so neither reads as praise or shame. */
+    h2.section-heading {
+      font-size: .78rem; margin: 1.75rem 0 .6rem; text-transform: uppercase;
+      letter-spacing: .07em; font-weight: 700; color: var(--muted);
+    }
+    h2.section-heading .count { font-variant-numeric: tabular-nums; }
+
+    ul.rows { list-style: none; padding: 0; margin: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; }
+    ul.rows li { padding: .8rem 1.25rem; border-top: 1px solid var(--border);
+      display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+    ul.rows li:first-child { border-top: none; }
+    .repo { font-weight: 600; }
+    .detail { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums;
+      white-space: nowrap; }
+
+    .empty-state {
+      margin: 0 0 1rem;
+      padding: 1.2rem 1.4rem;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-size: .9rem;
+    }
+    .empty-state a { color: var(--accent); }
+
+    code { background: color-mix(in srgb, currentColor 10%, transparent);
+      padding: .1em .35em; border-radius: .25rem; font-size: .87em; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="{% url 'portfolio:dashboard' %}">weekly</a>
+    <nav>
+      <a href="{% url 'portfolio:projects' %}">projects</a>
+      <a href="{% url 'portfolio:retro_list' %}">all retros</a>
+      <a href="/admin/">admin</a>
+    </nav>
+  </header>
+
+  <h1>{{ year }}</h1>
+  <p class="sub">Shipped, dropped, and silent - the year in one page, no praise, no shame.</p>
+
+  {% if summary.is_empty %}
+    <div class="empty-state">
+      <p>
+        Nothing recorded for {{ year }}: no stored weekly history and no project ended
+        in this ISO week-year.
+      </p>
+    </div>
+  {% else %}
+    <h2 class="section-heading">Shipped <span class="count">({{ summary.shipped_count }})</span></h2>
+    {% if summary.shipped %}
+      <ul class="rows">
+        {% for row in summary.shipped %}
+          <li>
+            <span class="repo">{{ row.repo }}</span>
+            <span class="detail">{{ row.end_date|date:"Y-m-d" }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty-state"><p>No projects shipped in {{ year }}.</p></div>
+    {% endif %}
+
+    <h2 class="section-heading">Dropped <span class="count">({{ summary.dropped_count }})</span></h2>
+    {% if summary.dropped %}
+      <ul class="rows">
+        {% for row in summary.dropped %}
+          <li>
+            <span class="repo">{{ row.repo }}</span>
+            <span class="detail">{{ row.end_date|date:"Y-m-d" }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty-state"><p>No projects dropped in {{ year }}.</p></div>
+    {% endif %}
+
+    <h2 class="section-heading">Silent <span class="count">({{ summary.silent_count }})</span></h2>
+    {% if summary.silent %}
+      <ul class="rows">
+        {% for row in summary.silent %}
+          <li>
+            <span class="repo">{{ row.repo }}</span>
+            <span class="detail">
+              {% if row.weeks_silent is None %}
+                no commit history
+              {% else %}
+                {{ row.weeks_silent }} week{{ row.weeks_silent|pluralize }} silent
+              {% endif %}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty-state"><p>No silent projects in {{ year }}.</p></div>
+    {% endif %}
+  {% endif %}
+</body>
+</html>

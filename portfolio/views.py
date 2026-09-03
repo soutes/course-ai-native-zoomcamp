@@ -1,5 +1,8 @@
 """Web surface. The terminal and the browser read the same data."""
 
+from zoneinfo import ZoneInfo
+
+from django.conf import settings
 from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
@@ -9,6 +12,7 @@ from .services import render as render_service
 from .services.markdown_render import render_markdown_html
 from .services.projects import STATUS_LABELS, STATUS_ORDER, group_projects, triage_history
 from .services.week import week_label, week_window
+from .services.year import parse_year, year_summary
 
 
 def dashboard(request):
@@ -123,3 +127,23 @@ def projects(request):
             "triage_history": history,
         },
     )
+
+
+def year(request, year):
+    """Yearly retrospective (#31): shipped, dropped, and silent, side by side.
+
+    Thin wiring over `portfolio.services.year.year_summary` (D30) - the exact
+    same function `manage.py year` calls, so the command and this page cannot
+    drift apart. A malformed year 404s, same convention `retro_detail` sets
+    for a malformed week label; a year with nothing recorded renders the
+    summary's own explanatory empty state rather than 404ing.
+    """
+    try:
+        parsed_year = parse_year(year)
+    except ValueError as exc:
+        raise Http404(f"invalid year: {year!r}") from exc
+
+    tz = ZoneInfo(settings.TIME_ZONE)
+    summary = year_summary(parsed_year, tz)
+
+    return render(request, "portfolio/year.html", {"year": parsed_year, "summary": summary})
