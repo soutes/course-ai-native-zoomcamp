@@ -136,7 +136,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 
 ## Phase 6 — Yearly view
 
-- [ ] **31. `year` command and page.** ([#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31))
+- [x] **31. `year` command and page.** ([#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31))
   Shipped, dropped, and silent side by side. Done when a full year renders from stored data.
 - [ ] **32. Time-to-decision.** ([#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32))
   How many silent weeks passed before a project was admitted over. Done when the number
