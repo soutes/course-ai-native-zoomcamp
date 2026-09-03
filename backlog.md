@@ -98,7 +98,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **21. Week-over-week deltas.** ([#21](https://github.com/soutes/course-ai-native-zoomcamp/issues/21))
   Every number carries last week's value, read from the stored `RepoWeek` rows. Done when the
   header line shows both weeks.
-- [ ] **22. Rhythm over volume.** ([#22](https://github.com/soutes/course-ai-native-zoomcamp/issues/22))
+- [x] **22. Rhythm over volume.** ([#22](https://github.com/soutes/course-ai-native-zoomcamp/issues/22))
   Report the spread of active days, and let it outrank raw totals in the prose. Done when a
   one-day burst and a five-day habit with equal commit counts read differently.
 - [ ] **23. Abandoned counter in the header.** ([#23](https://github.com/soutes/course-ai-native-zoomcamp/issues/23))
