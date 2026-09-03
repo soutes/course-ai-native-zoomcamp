@@ -1,5 +1,7 @@
 # weekly
 
+[![CI](https://github.com/soutes/course-ai-native-zoomcamp/actions/workflows/ci.yml/badge.svg)](https://github.com/soutes/course-ai-native-zoomcamp/actions/workflows/ci.yml)
+
 > Projeto de avaliação dos projetos com base nos commits que eu fiz ao longo da semana.
 
 A Monday-morning retrospective over my GitHub project portfolio.

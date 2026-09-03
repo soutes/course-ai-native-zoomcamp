@@ -28,3 +28,6 @@ jobs:
 
       - name: Run lint
         run: uv run ruff check .
+
+      - name: Run Django checks
+        run: uv run manage.py check
