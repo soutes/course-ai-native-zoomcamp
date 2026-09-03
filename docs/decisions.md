@@ -581,3 +581,70 @@ visible anywhere in the app - the sequence of prior transitions (e.g. paused, th
 re-shipped with a different reason) is not recoverable.
 
 **Applies to:** [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19)
+
+---
+
+## D18 - #20's README signal costs one new request per active repo per week; auto vs. manual "shipped" is told apart by a `status_reason` prefix, not a new field
+
+**Question:** #20's filed body claimed detection "reuses the tree read from #18" for all three
+signals and that the README check needs "no new per-repo request beyond" releases/tags/README
+"already fetched." That is not true for the README signal: #18's tree (`GitHub.tree`,
+`git/trees/{default}?recursive=1`) is a **file listing** - paths only, no blob content - and the
+existing `GitHub.has_readme()` (used by triage, #4) only reads a response status code, never the
+README's body. Detecting a `Status: Complete` *line inside* the README requires fetching its
+actual content, which no existing call does - a genuinely new request per repo. Separately, #20's
+AC requires a shipped-by-release repo that starts committing again to return to "active", but
+**not** to override a status a human set with `ack --shipped` - `Project` (#10/#19, D17) has no
+field recording whether a transition was automatic or human, only `status`/`status_reason`/
+`status_changed_at`, and D17 already rejected adding a transition-history model for a lesser
+reason (re-ack bookkeeping) than this.
+
+**Decision:**
+1. **README signal is a new request.** A new `GitHub.readme_text(full_name) -> str | None` method
+   fetches the README's decoded content (`Accept: application/vnd.github.raw+json` on the same
+   `/repos/{full}/readme` endpoint `has_readme` already calls), cached like every other read. It
+   runs once per in-report-window (active, non-paused) project per week, alongside the tags call
+   below - both are new but bounded to the same population `report` already fetches
+   `commits_in_window`/`gh.tree` for, so the added cost is proportional to what the command
+   already pays, not unbounded.
+2. **Tags are a new `GitHub.tags(full_name)` method** (`/repos/{full}/tags`, cached), filtered to
+   names matching `^v?\d+\.\d+(\.\d+)?$` (optional leading `v`, major.minor with optional patch).
+   A pre-release-looking tag (`v1.0.0-rc1`, `v2.0-beta`) does **not** count - it signals "not yet
+   final," the opposite of shipped.
+3. **`Status: Complete` matching:** case-insensitive, read one line at a time; markdown wrapping
+   characters (`#`, `*`, `_`, `-`, backticks, leading/trailing whitespace) are stripped from the
+   line before matching `^status:\s*complete$` against what remains - an exact value match, not a
+   substring search, so `Status: Complete, tests pending` does **not** match (it is not exactly
+   "complete") and `Status: In Progress`/`Status: WIP` do not either.
+4. **Signal priority when more than one fires:** release, then tag, then README, in that order -
+   the reason recorded names whichever fired first by this priority, not every signal that fired.
+5. **Auto vs. manual provenance uses the existing `status_reason` field**, not a new column: every
+   auto-fired transition's reason is written with a fixed prefix, `"Auto-detected: "` (e.g.
+   `"Auto-detected: released"`, `"Auto-detected: tag v1.2.0"`, `"Auto-detected: README says Status:
+   Complete"`). The "keeps committing -> active again" check (a second pass over
+   `Project.objects.filter(status=SHIPPED)`, after the main per-project loop, calling
+   `commits_in_window` for the current report week same as every other project) only fires for
+   rows whose `status_reason` starts with that prefix. A project shipped by `ack --shipped` never
+   carries that prefix, so it is never auto-reactivated or otherwise touched - "explicit human
+   state wins over inference, always" (#20's own constraint) holds without a schema change.
+6. **Detection happens inside `report`'s existing per-project loop**, at the start of each
+   iteration, before that project's row is added to `repo_rows`: if a signal fires, call `#19`'s
+   `apply_transition(project, SHIPPED, reason=...)` and skip appending the row, so the repo drops
+   out of the *same* run's report, not the next one. No second `report` invocation is required to
+   observe the drop.
+
+**Reason:** The issue as filed described a free lunch (three signals, zero new requests) that the
+codebase cannot deliver - `has_readme`/`tree` genuinely do not carry README content. Rather than
+leave that AC unimplementable or have the engineer quietly invent a workaround, the real cost
+(two new, cached, once-per-active-repo-per-week requests) is named and bounded here. Reusing
+`status_reason`'s existing prefix convention for auto/manual provenance avoids a second model or
+migration for a one-bit distinction, consistent with D17's refusal to add transition-history
+machinery for a smaller need.
+
+**Cost accepted:** `report` now makes two more GitHub requests (tags, README content) per active
+project per week than it did before #20, on top of what #18 already added. A `status_reason` that
+happens to start with `"Auto-detected: "` for another reason (unlikely, but a human could type it)
+would be treated as auto-provenance - accepted as a naming convention, not a bulletproof flag, the
+same way #18/#19 already lean on plain-string conventions elsewhere in this codebase.
+
+**Applies to:** [#20](https://github.com/soutes/course-ai-native-zoomcamp/issues/20)
