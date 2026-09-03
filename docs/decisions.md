@@ -851,3 +851,41 @@ covers that case.
 to satisfy its own "works with both keys unset" AC as filed.
 
 **Applies to:** [#35](https://github.com/soutes/course-ai-native-zoomcamp/issues/35)
+
+---
+
+## D23 - #24's client reads existing `LLM_*` settings as-is; only the API-key variable is renamed off `groq`
+
+**Question:** Grooming #24 found that `config/settings.py` already defines `LLM_BASE_URL`,
+`LLM_MODEL` and `LLM_API_KEY` (reading `GROQ_API_KEY`), with `LLM_BASE_URL` and `LLM_MODEL`
+defaulting to Groq's endpoint and `llama-3.3-70b-versatile` - present since the initial commit,
+ahead of #24 ever being built. #24's own filed acceptance criteria say "no vendor default
+compiled in" and "the string `groq` appears in no module name, no class name and no default
+value" - read literally, that forbids the `LLM_BASE_URL`/`LLM_MODEL` defaults that already exist
+and are already documented as intentional (`docs/privacy.md`, D14: "The default is Groq. No
+vendor is hardcoded."). The two statements conflict: `docs/privacy.md` treats a Groq-pointing
+default as compatible with "no vendor hardcoded" (hardcoded means the *client* cannot special-case
+a vendor, not that the *settings default* cannot point at one); #24's drafted ACs read more strictly
+than that. `GROQ_API_KEY` as the key's variable name is a separate problem neither document
+addresses: it puts the literal string `groq` into a name the runtime imports and reads, which
+holds regardless of how the base-URL-default question is settled.
+
+**Decision:** `LLM_BASE_URL` and `LLM_MODEL` keep their existing defaults (Groq's endpoint and
+model) - #24 does not touch them, and its acceptance criteria are worded against `docs/privacy.md`
+("no vendor hardcoded" = the client module never special-cases a vendor; a default value pointing
+at Groq is allowed and already shipped). The API key gets no default (missing raises the clear,
+catchable error #24 already requires) and its environment variable is renamed from `GROQ_API_KEY`
+to `LLM_API_KEY` for consistency with the other two `LLM_*` variables - that one-line settings.py
+edit and the matching `.env.example` line are in #24's scope, since #24 is the first issue that
+actually reads the key at runtime and the only issue that touches this variable before Phase 4.
+
+**Reason:** Reopening #2 (closed, mvp) to fix a name picked before this document existed would be
+scope creep on a closed issue; #24 is the natural, and only, place left to fix it before any code
+depends on the old name. Keeping the base-URL/model defaults matches the product decision already
+recorded in `docs/privacy.md` and avoids forcing a fresh clone to configure two extra variables
+just to try the app.
+
+**Cost accepted:** Anyone with a `.env` carrying `GROQ_API_KEY=...` from before this decision needs
+to rename it to `LLM_API_KEY` - acceptable pre-MVP-completion, no deployed instance exists yet.
+
+**Applies to:** [#24](https://github.com/soutes/course-ai-native-zoomcamp/issues/24), [#2](https://github.com/soutes/course-ai-native-zoomcamp/issues/2)
