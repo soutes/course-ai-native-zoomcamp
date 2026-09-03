@@ -658,7 +658,9 @@ same way #18/#19 already lean on plain-string conventions elsewhere in this code
 `week_label` (window -> label) - there is no "week label N-1" function anywhere in the
 codebase today. Read literally, "reuses #11" could be misread as "the function already
 exists, just call it," which it does not; getting the calendar-previous ISO week label
-right across a year boundary (`2027-W01` -> `2026-W52`, not `2027-W00`) needs its own
+right across a year boundary (`2027-W01` -> `2026-W53`, not `2027-W00`; 2026 is a
+53-ISO-week year, so `W52` - the number this entry originally used - is itself wrong,
+corrected during #21's QA pass) needs its own
 date arithmetic, the same `date.fromisocalendar` shape `week_window` already uses, not a
 generic `week - 1` string operation. Separately, #21's Constraints said the calculation
 lives in `portfolio/services/`, "no Django and no LLM," but the previous week's numbers
