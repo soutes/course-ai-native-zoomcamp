@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>weekly - projects</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --border: #e5e3df;
+      --text: #1c1a17;
+      --muted: #6b6862;
+      --accent: #2563eb;
+      --radius: .6rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161513;
+        --surface: #1e1c19;
+        --border: #33302b;
+        --text: #f2f0ec;
+        --muted: #9c988f;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 5rem;
+    }
+
+    header.top { display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 1.75rem; flex-wrap: wrap; gap: .5rem; }
+    header.top a.brand { font-weight: 700; font-size: 1.1rem; color: var(--text);
+      text-decoration: none; letter-spacing: -.02em; }
+    header.top nav a { color: var(--muted); text-decoration: none; font-size: .9rem;
+      margin-left: 1rem; }
+    header.top nav a:hover { color: var(--accent); }
+
+    h1 { font-size: 1.5rem; margin: 0 0 .15rem; letter-spacing: -.01em; }
+    .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: .92rem; }
+
+    h2.section-heading {
+      font-size: .78rem; margin: 1.75rem 0 .6rem; text-transform: uppercase;
+      letter-spacing: .07em; font-weight: 700; color: var(--muted);
+    }
+    h2.section-heading .count { font-variant-numeric: tabular-nums; }
+
+    ul.rows { list-style: none; padding: 0; margin: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; }
+    ul.rows li { padding: .8rem 1.25rem; border-top: 1px solid var(--border); }
+    ul.rows li:first-child { border-top: none; }
+    .repo { font-weight: 600; }
+    .goal { color: var(--text); font-size: .92rem; margin: .2rem 0 0; }
+    .goal.placeholder { color: var(--muted); font-style: italic; }
+    .meta { color: var(--muted); font-size: .82rem; margin-top: .3rem; }
+    .reason { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+
+    .empty-state {
+      margin: 0 0 1rem;
+      padding: 1.2rem 1.4rem;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-size: .9rem;
+    }
+    .empty-state a { color: var(--accent); }
+
+    .triage-runs { list-style: none; padding: 0; margin: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; }
+    .triage-runs li { padding: .7rem 1.25rem; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; font-size: .9rem; }
+    .triage-runs li:first-child { border-top: none; }
+    .triage-runs .date { font-variant-numeric: tabular-nums; }
+    .triage-runs .hidden-count { color: var(--muted); }
+
+    code { background: color-mix(in srgb, currentColor 10%, transparent);
+      padding: .1em .35em; border-radius: .25rem; font-size: .87em; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="{% url 'portfolio:dashboard' %}">weekly</a>
+    <nav>
+      <a href="{% url 'portfolio:retro_list' %}">all retros</a>
+      <a href="/admin/">admin</a>
+    </nav>
+  </header>
+
+  <h1>Projects</h1>
+  <p class="sub">{{ total }} tracked project{{ total|pluralize }}, grouped by status.</p>
+
+  {% if total == 0 %}
+    <div class="empty-state">
+      <p>No projects tracked yet. Add one in the <a href="/admin/">admin</a>.</p>
+    </div>
+  {% else %}
+    {% for section in sections %}
+      <h2 class="section-heading">{{ section.label }} <span class="count">({{ section.count }})</span></h2>
+      {% if section.rows %}
+        <ul class="rows">
+          {% for project in section.rows %}
+            <li>
+              <div class="repo">{{ project.repo }}</div>
+              {% if project.goal %}
+                <p class="goal">{{ project.goal }}</p>
+              {% else %}
+                <p class="goal placeholder">no goal set</p>
+              {% endif %}
+              <div class="meta">
+                {% if project.status_changed_at %}
+                  status changed {{ project.status_changed_at|date:"Y-m-d" }}
+                {% else %}
+                  status not yet changed
+                {% endif %}
+                {% if section.key == "paused" and project.paused_until %}
+                  &middot; paused until {{ project.paused_until|date:"Y-m-d" }}
+                {% endif %}
+              </div>
+              {% if project.status_reason %}
+                <p class="reason">{{ project.status_reason }}</p>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="empty-state">
+          <p>No {{ section.label|lower }} projects.</p>
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  <h2 class="section-heading">Triage history</h2>
+  {% if triage_history %}
+    <ul class="triage-runs">
+      {% for run in triage_history %}
+        <li>
+          <span class="date">{{ run.ran_at|date:"Y-m-d" }}</span>
+          <span class="hidden-count">{{ run.hidden_count }} repo{{ run.hidden_count|pluralize }} made private</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty-state">
+      <p>No triage applied yet. Run <code>manage.py triage</code> to see the plan.</p>
+    </div>
+  {% endif %}
+</body>
+</html>
