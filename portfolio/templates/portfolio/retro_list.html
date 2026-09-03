@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>weekly - retros</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 15px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+      max-width: 52rem; margin: 3rem auto; padding: 0 1.5rem;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: .2rem; }
+    .sub { opacity: .6; margin-top: 0; }
+    ul { list-style: none; padding: 0; }
+    li { padding: .5rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .empty { opacity: .5; font-style: italic; }
+    a { color: inherit; }
+    .week { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1><a href="{% url 'portfolio:dashboard' %}">weekly</a></h1>
+  <p class="sub">Weekly retrospectives, newest first.</p>
+
+  <ul>
+    {% for report in reports %}
+      <li>
+        <a class="week" href="{% url 'portfolio:retro_detail' week=report.week %}">{{ report.week }}</a>
+      </li>
+    {% empty %}
+      <li class="empty">
+        No retros stored yet. Run <code>manage.py report</code> to generate one.
+      </li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
