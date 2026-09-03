@@ -21,6 +21,7 @@ from .types import Commit, CommitStat, OpenPullRequest, Repo, UnmergedBranch
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
 BRANCH_COMPARE_CAP = 20  # docs/decisions.md D8 (amends D3)
+BRANCH_LIST_PAGE_CAP = 2  # docs/decisions.md D8 - at most 200 branches scanned
 
 
 class GitHubError(RuntimeError):
@@ -272,15 +273,24 @@ class GitHub:
     # --- mid-flight work (#15) ------------------------------------------------
 
     def branches(self, full_name: str) -> list[dict[str, Any]]:
-        """Every branch in the repo, paginated and cached like `my_repos`.
+        """Up to `BRANCH_LIST_PAGE_CAP` pages of branches (200 at 100/page),
+        cached page by page like `my_repos`.
 
         GitHub's response here is name + head `commit.sha` only - no push
         date - so it cannot alone answer "most recently pushed". See
         `unmerged_branches` for how the D8 bound is applied on top of this.
+
+        Capped at `BRANCH_LIST_PAGE_CAP` pages (D8): the whole point of the
+        bound is a request count that does not grow with a repo's branch
+        count, so a repo with hundreds or thousands of branches must not
+        turn this listing step itself into an unbounded number of requests.
+        A repo with more branches than the cap covers simply has some of
+        them invisible to `unmerged_branches` for that run - same accepted
+        cost D8 already takes for the 20-compare cap.
         """
         result: list[dict[str, Any]] = []
         page = 1
-        while True:
+        while page <= BRANCH_LIST_PAGE_CAP:
             batch = self._cached_json(f"/repos/{full_name}/branches", per_page=100, page=page)
             if not batch:
                 return result
@@ -288,6 +298,7 @@ class GitHub:
             if len(batch) < 100:
                 return result
             page += 1
+        return result
 
     def unmerged_branches(self, full_name: str, default_branch: str) -> list[UnmergedBranch]:
         """Branches ahead of default and not merged into it - mid-flight work (#15).

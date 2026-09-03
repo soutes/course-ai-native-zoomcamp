@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from portfolio.services.cache import Cache
-from portfolio.services.github import API, BRANCH_COMPARE_CAP, GitHub
+from portfolio.services.github import API, BRANCH_COMPARE_CAP, BRANCH_LIST_PAGE_CAP, GitHub
 
 NOW = datetime.now(UTC)
 
@@ -62,7 +62,8 @@ def route_handler(*, branches, compares, pulls, calls=None):
 
         if path.endswith("/branches"):
             page = int(request.url.params.get("page", "1"))
-            return httpx.Response(200, json=branches if page == 1 else [])
+            start = (page - 1) * 100
+            return httpx.Response(200, json=branches[start : start + 100])
 
         if "/compare/" in path:
             head = path.rsplit("...", 1)[-1]
@@ -183,6 +184,43 @@ def test_at_most_20_branches_are_compared_and_total_requests_stay_bounded():
     assert len(calls) <= 22
     # the first 20 branches in API order are compared, not a recency subset
     assert {b.name for b in result} == {f"b{i:02d}" for i in range(20)}
+
+
+def test_branch_list_pagination_is_capped_at_two_pages_for_a_251_branch_repo():
+    """D8 regression: `branches()` itself must not paginate without limit.
+    A 251-branch repo (main + 250 others, spanning 3 pages at per_page=100)
+    must fetch at most `BRANCH_LIST_PAGE_CAP` (2) `/branches` pages - never
+    a 3rd - so the listing step stays bounded regardless of branch count,
+    same as the `compare` cap."""
+    branches = [raw_branch("main")] + [raw_branch(f"b{i:03d}") for i in range(250)]
+    compares = {
+        b["name"]: raw_compare(1, last_commit_date="2026-08-01T00:00:00Z") for b in branches[1:]
+    }
+    branch_pages: list[int] = []
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(path)
+        if path.endswith("/branches"):
+            page = int(request.url.params.get("page", "1"))
+            branch_pages.append(page)
+            start = (page - 1) * 100
+            return httpx.Response(200, json=branches[start : start + 100])
+        if "/compare/" in path:
+            head = path.rsplit("...", 1)[-1]
+            return httpx.Response(200, json=compares.get(head, raw_compare(0, 0)))
+        return httpx.Response(404, json={"message": f"unhandled path {path}"})
+
+    gh = make_gh(handler)
+
+    result = gh.unmerged_branches("me/demo", default_branch="main")
+
+    assert branch_pages == list(range(1, BRANCH_LIST_PAGE_CAP + 1)) == [1, 2]
+    assert len(result) == BRANCH_COMPARE_CAP == 20
+    compare_calls = [c for c in calls if "/compare/" in c]
+    assert len(compare_calls) == 20
+    assert len(calls) <= 22
 
 
 # --- open_pull_requests ----------------------------------------------------------
