@@ -326,3 +326,40 @@ remains true only once the owner clicks it by hand. Same acknowledged gap
 as D6/D9's deferred manual verification.
 
 **Applies to:** [#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)
+
+---
+
+## D11 - Error templates live flat in `portfolio/templates/`, not namespaced under `portfolio/templates/portfolio/`
+
+**Question:** Every existing template (`dashboard.html`, `retro_detail.html`,
+`retro_list.html`) lives under `portfolio/templates/portfolio/` - the
+standard Django app-namespacing convention, so `{% include %}`/`render()`
+calls referencing `"portfolio/dashboard.html"` cannot collide with
+same-named templates from a different app. Django's default error views
+(`django.views.defaults.page_not_found`, `permission_denied`,
+`server_error`) do not follow that convention - they look up the literal
+names `404.html`, `403.html`, `500.html` with no app prefix, via whatever is
+on the template engine's search path. `TEMPLATES[0]["DIRS"]` in
+`config/settings.py` points at `BASE_DIR / "templates"`, a project-root
+directory that does not exist in this repo; `APP_DIRS` is `True`, so the
+only search path that actually resolves anything today is
+`<app>/templates/` for each installed app, i.e. `portfolio/templates/`
+itself (not the `portfolio/` subfolder inside it).
+
+**Decision:** `403.html`, `404.html`, `500.html` go directly in
+`portfolio/templates/` (sibling to the existing `portfolio/` subfolder), not
+inside `portfolio/templates/portfolio/` and not in a new project-root
+`templates/` directory. No `TEMPLATES["DIRS"]` change, no new directory.
+
+**Reason:** Django's error-view lookup is not namespace-aware and there is
+exactly one search path that already reaches `portfolio/templates/` -
+`APP_DIRS`. Namespacing the error templates the way the page templates are
+namespaced would make them invisible to `page_not_found`/`server_error`,
+silently falling back to Django's built-in pages with `DEBUG=False`, which
+is the exact failure #41 exists to fix.
+
+**Cost accepted:** None - this only fixes a location that would otherwise
+need a second, harder-to-diagnose grooming pass once the first attempt
+mysteriously didn't render.
+
+**Applies to:** [#41](https://github.com/soutes/course-ai-native-zoomcamp/issues/41)
