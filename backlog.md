@@ -65,7 +65,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
   Weeks since the last commit, per repo. Done when a repo silent for a month is flagged.
 - [x] **15. Mid-flight work.** ([#15](https://github.com/soutes/course-ai-native-zoomcamp/issues/15))
   Unmerged branches and open PRs per repo. Done when both appear in the report data.
-- [ ] **16. `report` management command.** ([#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16))
+- [x] **16. `report` management command.** ([#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16))
   Render the four retro sections as markdown on stdout. Done when every claim carries a repo
   name and a number.
 - [ ] **17. Retro web page.** ([#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17))
