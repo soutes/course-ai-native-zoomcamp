@@ -56,3 +56,26 @@ undercount of lines/files touched for that repo, flagged as partial rather
 than silently wrong.
 
 **Applies to:** [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13)
+
+---
+
+## D3 - Branch comparison bound per repo
+
+**Question:** Issue #15 requires bounding per-repo branch comparisons ("a
+repo with 40 stale branches must not spend 40 requests every run"), but no
+number is fixed anywhere.
+
+**Decision:** Compare at most the **20 most-recently-pushed non-default
+branches** per repo per run. Branches beyond that are omitted from
+"mid-flight work" for that run rather than compared.
+
+**Reason:** Recently-pushed branches are the ones most likely to be
+genuinely mid-flight; a branch 60th in push-recency order is closer to
+abandoned than active. 20 keeps the worst case (a repo with unusually many
+branches) from dominating a report's request budget.
+
+**Cost accepted:** A repo with more than 20 branches ahead of default in one
+run will not show every one of them as mid-flight work; the oldest-pushed
+ones drop off first.
+
+**Applies to:** [#15](https://github.com/soutes/course-ai-native-zoomcamp/issues/15)
