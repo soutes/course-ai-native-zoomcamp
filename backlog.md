@@ -155,7 +155,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **38. `seed_demo` management command.** ([#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38))
   A realistic portfolio, offline, no token needed. Done when `seed_demo` then `runserver` shows
   a populated dashboard on a fresh database.
-- [ ] **39. CI polish: `manage.py check`, README badge, branch protection.** ([#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)) `post-mvp`
+- [x] **39. CI polish: `manage.py check`, README badge, branch protection.** ([#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)) `post-mvp`
   Out of scope split from #37 while grooming. Branch protection is a repo-settings change the
   owner makes by hand, not an agent write.
 - [ ] **40. `seed_demo`: seed `RepoWeek` and `WeeklyReport` once #13/#16/#36 land.** ([#40](https://github.com/soutes/course-ai-native-zoomcamp/issues/40)) `post-mvp`
