@@ -432,3 +432,44 @@ admin view (`/admin/`, login required) or the terminal `triage` command -
 by design. Anyone wanting per-repo triage detail still has the admin.
 
 **Applies to:** [#43](https://github.com/soutes/course-ai-native-zoomcamp/issues/43)
+
+---
+
+## D14 - The privacy note lives at `docs/privacy.md`, and covers only what's actually committed today
+
+**Question:** #42's filed body offered a choice - "README.md or a new
+`docs/privacy.md`, linked from README" - without picking one, and its
+acceptance criteria hedged on repo descriptions/goals with "unless later
+decided otherwise" rather than stating the current rule plainly. Separately,
+`AGENTS.md`'s Determinism rule ("commit subjects and diffstat numbers,
+never full diffs") only describes the coaching call (#25, Phase 4). Goal
+drift (#29, Phase 5, still `post-mvp` and unimplemented) will need to send
+each project's `goal:` string to the same LLM to judge drift - a second kind
+of data, not covered by the existing rule, and not yet decided anywhere.
+
+**Decision:** The note is a standalone file, `docs/privacy.md`, linked from
+a new "Privacy" section in `README.md` (placed after "The four features",
+before "Status" - where a reader meets "AI coaching" for the first time).
+Not a section inside `README.md` itself, so it can grow (goal drift, any
+future LLM-backed feature) without bloating the README's own length. Its
+scope is exactly what today's `AGENTS.md` and `SPEC.md` already commit to:
+commit subjects and diffstat numbers, sent for every tracked repo including
+private ones (`SPEC.md` section 10, already accepted for a personal tool),
+never full diffs, never repo descriptions, never goal text - with a note
+that goal drift (#29) will send goal text once built and this document must
+be updated then, rather than the note speculatively covering data #29
+doesn't send yet.
+
+**Reason:** A checkable acceptance criterion needs one answer, not an
+either/or left to the engineer. A separate file keeps the README short and
+gives future LLM-sending features (#29 and beyond) one place to extend
+instead of re-litigating where privacy content lives. Describing only what
+is actually sent today (not "unless later decided otherwise") keeps the
+document accurate without needing another grooming pass just to remove a
+hedge.
+
+**Cost accepted:** `docs/privacy.md` will need a follow-up edit when #29
+(goal drift) ships, since it sends a new kind of data this version does not
+cover. That edit belongs to #29's own acceptance criteria, not to #42.
+
+**Applies to:** [#42](https://github.com/soutes/course-ai-native-zoomcamp/issues/42), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29)
