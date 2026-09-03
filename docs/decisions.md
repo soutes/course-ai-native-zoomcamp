@@ -972,8 +972,8 @@ item), not a place in the three deterministic sections.
    ```python
    @dataclass
    class CoachingResult:
-       advice: dict[str, str]       # repo name -> capped, non-empty advice text
-       unavailable: list[str]       # repos sent, but with no usable advice
+       advice: dict[str, str]  # repo name -> capped, non-empty advice text
+       unavailable: list[str]  # repos sent, but with no usable advice
    ```
    `WeeklyReportData.coaching`'s type changes from `str | None` to `CoachingResult | None`.
    `coaching = None` means **total failure or not attempted** (unparseable JSON, wrong top-level
@@ -1243,8 +1243,8 @@ sections has a place for a goal-comparison verdict either (confirmed: no section
    map, every sent repo lands in `unavailable`), keeping #26's own shipped tests true unchanged.
 3. `CoachingResult` gains two fields, mirroring `advice`/`unavailable`'s existing shape:
    ```python
-   drift: dict[str, str] = field(default_factory=dict)        # repo -> verdict text
-   drift_unavailable: list[str] = field(default_factory=list) # goal+commits sent, no usable verdict
+   drift: dict[str, str] = field(default_factory=dict)  # repo -> verdict text
+   drift_unavailable: list[str] = field(default_factory=list)  # goal+commits sent, no usable verdict
    ```
    Only repos sent to the model *with* a goal line are resolved into `drift`/`drift_unavailable`
    (mirrors point 2's silent/no-goal skip - those repos appear in neither list, which is how "no
@@ -1371,3 +1371,104 @@ still credible," and the backlog treats them as separate signals on purpose (tas
 distinctly from task 14, not as a variant of it).
 
 **Applies to:** [#30](https://github.com/soutes/course-ai-native-zoomcamp/issues/30), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13), [#10](https://github.com/soutes/course-ai-native-zoomcamp/issues/10)
+
+---
+
+## D30 - #31 sources directly from `Project` + `RepoWeek`, no new model; "silent" reuses #14's stalled threshold against the project's *current* status; year membership follows ISO week-year, not calendar year
+
+**Question:** #31's filed body says the year "renders entirely from stored weeks" and its Constraints
+name `RepoWeek` (#13) and "lifecycle transitions (#19, #20)" as the sources, but leaves four real
+forks unresolved. First, `WeeklyReport` (#16, D5) only holds a row for a week `report` actually ran -
+if a week was skipped, or `--repo` narrowed a run so no row was written (D5: "a `--repo` run never
+persists a `WeeklyReport` row," #35/D22), iterating `WeeklyReport` rows would silently under-count a
+year even though `RepoWeek` and `Project` still have the data. Second, "shipped, dropped, and silent
+side by side" (backlog.md, FEATURES.md 6.1) names exactly three groups - nothing asks for a fourth
+"active and committing normally" group, and `FEATURES.md`'s own framing ("no moral difference between
+the first two") confirms this view is about endings and indecision specifically, not a full portfolio
+roster (that is #43's `/projects/` page). Third, "silent" (backlog: "no commits for a long stretch")
+has no threshold named anywhere for #31 itself, while #14's `stalled.py` already ships exactly this
+computation (`is_stalled`/`weeks_since_last_commit`, `STALLED_THRESHOLD_WEEKS = 4`) for the identical
+question asked weekly instead of yearly - and `Project` (D17) carries no transition history, only its
+*current* `status`/`status_changed_at`, so a year view has no way to know what a project's status
+actually was during a past year, only what it is now. Fourth, `RepoWeek.week` and `WeeklyReport.week`
+are ISO week labels (`"YYYY-Www"`), and the whole app's date arithmetic (`week.py`, D19) is built on
+`date.isocalendar()`, not calendar `.year` - but `status_changed_at` is a plain `DateTimeField`, and
+"year" as a command/URL argument is never defined as ISO week-year vs. calendar year, which disagree
+for dates in late December/early January in some years.
+
+**Decision:**
+1. **No new model.** The shared service function (below) reads `Project` (all fields, current
+   snapshot) and `RepoWeek` (#13) directly - never `WeeklyReport`. `WeeklyReport` rows are #16/#17/#36's
+   territory; #31 does not depend on a `report` run ever having happened for every week of the year, only
+   on `RepoWeek` (written by `report`'s per-project loop, D5) and `Project`'s current fields.
+2. **Exactly three groups, nothing else.** Shipped and dropped are `Project.objects.filter(status=...)`
+   rows whose `status_changed_at`'s ISO week-year (`status_changed_at.isocalendar()[0]`) equals the
+   requested year. Silent is every `Project` whose *current* status is `active`, or `paused` with its
+   pause expired as of the year's reference date (mirrors `Project.in_weekly_report`/`stalled_status`'s
+   own pause rule) - i.e. currently report-eligible - **and** is stalled at that year's reference point.
+   A project currently active-and-committing-regularly (not stalled) appears in none of the three groups
+   and is not rendered anywhere on the page - by design, matching FEATURES.md 6.1's own scope, not a gap
+   to fill here. No fourth group is added.
+3. **Silent reuses #14 exactly, not a reimplementation.** The shared function calls
+   `portfolio.services.stalled.weeks_since_last_commit`/`is_stalled` (same `STALLED_THRESHOLD_WEEKS = 4`,
+   no new threshold invented for #31), sourcing `last_commit_week` from stored `RepoWeek` rows for that
+   repo (same query shape as `stalled_lookup.most_recent_commit_week`, capped at the year's reference
+   week) and comparing against **the year's reference week**: the last ISO week label inside the
+   requested year if the year is fully in the past, or the current ISO week if the requested year is the
+   current year (never a future week that has no data yet). `weeks_since_last_commit` returning `None`
+   (never committed) is rendered as "no commit history," the same convention #32 already requires for its
+   own no-history case - not a large or misleading number.
+4. **Silent eligibility uses the project's current status only**, acknowledged as a real limitation, not
+   silently papered over: a project dropped in 2026 that was actually `paused` (not `active`) during
+   2024 cannot be told apart from one that was `active` throughout, because #19/D17 stores no transition
+   history - only the latest `status`/`status_changed_at`. #31 does not attempt to reconstruct historical
+   status; the silent group for any past year reflects "is this project's current lifecycle state one
+   that would have made it report-eligible, and was it stalled at that year's reference point" - not
+   "was it actually active back then." This is the same cost D17 already accepted for re-acking; #31
+   inherits it rather than reopening D17 to add history it does not need.
+5. **A shipped/dropped ending is recorded exactly once**, in the ISO week-year of `status_changed_at` -
+   never repeated across years. A project can still appear in the *silent* group of an earlier year and
+   the *shipped*/*dropped* group of a later year (different groups, different years) without that being
+   a double-count of the same ending - this is what "appears in each year it was active, without
+   double-counting an ending" (the filed AC) means: silence recurs per year by construction (point 3
+   re-evaluates it fresh each year); an ending does not, because it is read from one field
+   (`status_changed_at`) that only ever holds one value.
+6. **Year membership is ISO week-year**, not calendar year: the command/URL takes a 4-digit ISO week-year
+   (`date.isocalendar()[0]`, matching `RepoWeek.week`'s own `"YYYY-Www"` labels), `RepoWeek` rows for the
+   year are selected by `week.startswith(f"{year}-W")` (same lexicographic-prefix approach `week.py`/
+   `stalled_lookup.py` already rely on elsewhere), and `status_changed_at` is bucketed by
+   `status_changed_at.isocalendar()[0]`, not `.year`. This keeps every date computation in #31 consistent
+   with the one convention the rest of the app already uses, instead of introducing a second,
+   disagreeing definition of "year" for the one issue that happens to also take a plain calendar year as
+   its example (`year 2026`, filed body) - 2026 does not straddle the ISO/calendar boundary, so the
+   filed example reads identically either way.
+7. **The "no stored weeks" empty state** (filed AC) fires when a requested year has **zero** `RepoWeek`
+   rows with `week` prefixed `"{year}-W"` **and** zero `Project` rows with `status_changed_at` in that
+   ISO week-year - i.e. the app genuinely has nothing recorded for that year (a year before tracking
+   started, or a future year). A year with, say, one shipped project but no `RepoWeek` history at all
+   still renders that one project normally; it is not blanked out by the empty state, which is reserved
+   for the case where there is truly nothing to show.
+
+**Reason:** Point 1 keeps #31 buildable without depending on `report` having been run for every single
+week of a year, which nothing in #16/#35 guarantees and #31's own Constraints ("reads stored `RepoWeek`
+rows... and lifecycle transitions") already point at, not `WeeklyReport`. Point 2 is the literal, narrow
+scope FEATURES.md 6.1 states ("shipped vs dropped vs silent... no moral difference between the first
+two") - inventing a fourth group would be scope the filer never asked for, and #43 already exists for
+"see every tracked project." Point 3 avoids a second, subtly different stalled-threshold definition
+living beside #14's already-shipped one - the exact failure mode D18/D19/D21 already caught elsewhere in
+this backlog (an issue's filed body implying new logic that a shipped module already provides). Point 4
+names a real, structural limitation (D17: no transition history) up front rather than letting an
+engineer either invent history-tracking scope #31 never asked for or silently under-specify what
+"silent" means for a past year. Point 5 resolves the filed AC's own double-counting language against
+what the data can actually support. Point 6 removes an ambiguity (ISO vs. calendar year) that every
+other date computation in this codebase already resolved one way; #31 is the first issue to take a bare
+year as user input, so it is the first place this needs to be said explicitly. Point 7 keeps the
+empty-state AC from over-firing and hiding real, if partial, data.
+
+**Cost accepted:** The silent group's accuracy for a past year is bounded by point 4's limitation - a
+project whose lifecycle status has changed since the requested year may show as silent (or not) based
+on today's status rather than the year's actual status. This is visible and named here, not hidden;
+fixing it would mean building the transition-history model D17 already declined to build, which is new
+scope for a future issue if it is ever actually needed, not #31's to invent.
+
+**Applies to:** [#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13), [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19), [#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32)
