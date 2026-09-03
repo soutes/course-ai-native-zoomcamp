@@ -87,6 +87,43 @@ ones drop off first.
 
 ---
 
+## D9 - Gate 5's live `report` run is deferred to the account owner
+
+**Question:** Gate 5's exit condition (`docs/gates.md`) is "every mvp issue
+is closed, and `manage.py report` prints a retrospective for the current
+week against seeded data." `manage.py report` (#16) always calls GitHub for
+real (`GITHUB_TOKEN`/`GITHUB_USER`/`GITHUB_EMAILS` are hard requirements,
+checked at the top of `handle()`) - there is no offline/mocked path for a
+real CLI run, and none exists in this environment. `seed_demo` (#38, per
+D7) deliberately does not seed `RepoWeek`/`WeeklyReport`, so there is no
+"seeded data" `report` could run against even with a token - that gap is
+already tracked as `post-mvp` #40.
+
+**Decision:** All 9 remaining mvp issues (11-17, 33, 36) are closed on
+their own merits - each individually QA-verified against a fake/mocked
+GitHub client, 169 tests green, `report`'s full pipeline exercised
+end-to-end in tests (`tests/test_report_command.py`). The literal live run
+is left for the account owner, on their own schedule, with their own
+token - not attempted by an agent. Unlike D6 (`--apply`, a write), `report`
+only reads from GitHub; asked directly, the owner still chose to defer
+rather than supply a token now, so the same "an agent doesn't do this
+without the owner present" posture from D6 applies here too, extended to
+reads for consistency rather than because reads carry the same risk as
+writes.
+
+**Reason:** No `GITHUB_TOKEN` exists in this environment, and per D6's
+precedent, credential-gated live verification is the account owner's call,
+not an agent's to make unilaterally by requesting one mid-run.
+
+**Cost accepted:** Gate 5 is marked closed on "every mvp issue is closed"
+plus full test coverage, not on a literal live run against seeded data
+having actually happened. That run remains open for the owner to do by
+hand at `manage.py report`.
+
+**Applies to:** Gate 5 (`docs/gates.md`), [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16)
+
+---
+
 ## D4 - The abandoned count is built where it is first needed, not by #23
 
 **Question:** #36 (mvp, Cross-cutting) requires "the abandoned count" as the
