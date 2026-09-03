@@ -211,3 +211,61 @@ def test_apply_prints_stars_and_forks_before_the_prompt(monkeypatch, settings, c
     assert "hide-ok" in output
     assert "3" in output  # stars
     assert "1" in output  # forks
+
+
+# --- confirmation abort path, and the DELETE pile under the full command path -
+
+
+@pytest.mark.django_db
+def test_confirm_abort_leaves_github_untouched_and_exits_cleanly(
+    monkeypatch, settings, capsys, apply_repos
+):
+    """A bare Enter (or anything but y/yes) aborts: no write, no SystemExit."""
+    from django.core.management import call_command
+
+    from portfolio.management.commands import triage as triage_cmd
+
+    settings.GITHUB_USER = "me"
+    settings.GITHUB_TOKEN = "fake-token"
+    fake_gh = FakeGitHub(apply_repos, fail=set())
+    monkeypatch.setattr(triage_cmd, "GitHub", lambda token, cache: fake_gh)
+    monkeypatch.setattr("builtins.input", lambda *_args: "")
+
+    # No --yes: the prompt is reached, and answering with a bare Enter aborts.
+    # A clean abort must not raise SystemExit - the process exits 0 by falling
+    # off the end of handle().
+    call_command("triage", "--apply", "--min-commits", "10")
+
+    output = capsys.readouterr().out
+    assert "Aborted" in output
+    assert fake_gh.made_private == []
+
+
+@pytest.mark.django_db
+def test_delete_pile_never_reaches_apply_under_full_command(monkeypatch, settings, capsys):
+    """A DELETE-verdict repo (an untouched fork) must never be patched, end to end."""
+    from django.core.management import call_command
+
+    from portfolio.management.commands import triage as triage_cmd
+
+    settings.GITHUB_USER = "me"
+    settings.GITHUB_TOKEN = "fake-token"
+    repos = [
+        make_repo(name="hide-me", full_name="me/hide-me", commits=2, stars=0, forks=0),
+        make_repo(
+            name="abandoned-fork",
+            full_name="me/abandoned-fork",
+            fork=True,
+            commits=0,
+            has_readme=False,
+        ),
+    ]
+    fake_gh = FakeGitHub(repos, fail=set())
+    monkeypatch.setattr(triage_cmd, "GitHub", lambda token, cache: fake_gh)
+
+    call_command("triage", "--apply", "--yes", "--min-commits", "10")
+
+    assert fake_gh.made_private == ["me/hide-me"]
+
+    output = capsys.readouterr().out
+    assert "delete it yourself in the GitHub UI" in output

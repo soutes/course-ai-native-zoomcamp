@@ -14,7 +14,12 @@ console = Console()
 PILES: list[tuple[Verdict, str, str, str]] = [
     (Verdict.SHOWCASE, "SHOWCASE", "green", "stays public - this is the portfolio"),
     (Verdict.HIDE, "HIDE", "yellow", "make private - dead weight"),
-    (Verdict.DELETE, "DELETE", "red", "suggested only, never automated"),
+    (
+        Verdict.DELETE,
+        "DELETE",
+        "red",
+        "suggested only - delete it yourself in the GitHub UI, never automated",
+    ),
     (Verdict.SKIP, "SKIP", "dim", "already private, nothing to do"),
 ]
 
