@@ -121,7 +121,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **27. `--no-llm` flag.** ([#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27))
   Full deterministic report with zero API dependency. Done when the report renders with the
   key unset.
-- [ ] **28. The single forward-looking focus item.** ([#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28))
+- [x] **28. The single forward-looking focus item.** ([#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28))
   One action for the week starting today, about behavior rather than code. Done when the
   report ends with exactly one.
 
