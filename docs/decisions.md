@@ -1181,3 +1181,115 @@ prompt-quality problem, not a code defect - nothing in `coach.py` validates advi
 D25's existing non-empty-string check.
 
 **Applies to:** [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16)
+
+---
+
+## D28 - #29 threads `Project.goal` into `RepoReportData`, extends the same batched request/response instead of a second call, adds `CoachingResult.drift`/`drift_unavailable`, and renders a new fifth "Goal check" section untouched by #28's focus item
+
+**Question:** #29 is the issue D24 explicitly named as the one allowed to send goal text to the
+LLM - "sending a project's goal to the LLM is #29's job (goal drift), not #25's." But #29's filed
+body left four forks open that its own ACs cannot be implemented against without guessing.
+
+First, `RepoReportData` (`portfolio/services/render.py`) still has no `goal` field today (D24,
+confirmed again by reading the dataclass) - #29's AC "each tracked project with a goal gets a
+drift verdict" cannot be evaluated without the goal text reaching the prompt-building code
+somehow, and `portfolio/management/commands/report.py` (the one call site that constructs
+`RepoReportData`, confirmed by reading it) already holds the `Project` instance - including
+`project.goal` - in scope at the exact line that builds each row, so nothing new needs fetching.
+
+Second, #29's Constraint says "same batched call as #25. One LLM request per report, never one
+per repo," but `build_batched_request`/`get_coaching` (#25/#26, shipped) only build and parse a
+flat `{"repo-name": "advice text"}` object (D25 point 2) - there is no field in that schema for a
+second, independent per-repo judgement. Extending the same request without a schema change is not
+possible: either drift text is jammed into the existing advice string (making "a malformed drift
+verdict degrades that one project only" AC unverifiable, since advice and drift would no longer be
+distinguishable failures), or the schema gains a place for both. D25's "no nesting, no wrapper key"
+was scoped to what #26 shipped, not a ceiling on every future extension of the same call - D25
+itself is silent on what a second judgement in the same request looks like.
+
+Third, `CoachingResult` (`dataclass`, `coach.py`) has exactly two fields, `advice`/`unavailable`,
+built for one judgement. #29's AC needs a project to independently succeed or fail at drift
+regardless of whether its (unrelated) coaching advice succeeded or failed - the existing two
+fields cannot carry that without conflating the two judgements.
+
+Fourth, `render_report_markdown` renders exactly four sections today (confirmed by reading it in
+full) and #28/D27 already locked "This week's focus" to a single deterministically-selected repo,
+wrapping at most one repo's coaching advice - "each tracked project with a goal gets a drift
+verdict" is plural, one verdict per qualifying project, which cannot fit inside a section D27
+already capped at one item without reopening D27 (closed, `#28` shipped). Nothing else in the four
+sections has a place for a goal-comparison verdict either (confirmed: no section reads
+`RepoReportData.goal` or anything drift-shaped today).
+
+**Decision:**
+1. `RepoReportData` gains `goal: str = ""` (empty string means no goal set - matches
+   `Project.goal`'s own `blank=True`, no goal text is ever `None` vs `""` ambiguity to handle).
+   `report.py`'s existing `RepoReportData(...)` call site passes `goal=project.goal` - no new
+   query, the `Project` row is already loaded there.
+2. **Same request, extended prompt, extended schema - no second call.** `_repo_prompt_lines`
+   appends a `goal: {text}` line only when `repo.goal` is non-empty. `_SYSTEM_PROMPT` gains
+   instructions to (a) judge drift only for a repo that has a stated goal and at least one commit
+   this week, (b) skip drift entirely - no verdict, not even a "no drift" one - for a silent repo
+   (zero commits) or a repo with no goal line, since those are #14/"skipped silently" territory,
+   not #29's, and (c) return the verdict in a **second top-level key**, alongside advice:
+   ```json
+   {"advice": {"repo-name": "advice text", ...}, "drift": {"repo-name": "verdict text", ...}}
+   ```
+   This is a breaking change to the wire format D25 shipped (`{"repo-name": "advice text"}` was
+   the whole object) - deliberately, since #29 is the one issue D24 authorized to extend this
+   exact call, and a flat single-purpose object cannot carry two independent per-repo judgements.
+   `_parsed_advice_object`/`get_coaching` are updated to read `parsed.get("advice", {})` and
+   `parsed.get("drift", {})` instead of treating the whole object as the advice map; a response
+   missing the `"advice"` key entirely still degrades exactly as D25/D26 already specify (empty
+   map, every sent repo lands in `unavailable`), keeping #26's own shipped tests true unchanged.
+3. `CoachingResult` gains two fields, mirroring `advice`/`unavailable`'s existing shape:
+   ```python
+   drift: dict[str, str] = field(default_factory=dict)        # repo -> verdict text
+   drift_unavailable: list[str] = field(default_factory=list) # goal+commits sent, no usable verdict
+   ```
+   Only repos sent to the model *with* a goal line are resolved into `drift`/`drift_unavailable`
+   (mirrors point 2's silent/no-goal skip - those repos appear in neither list, which is how "no
+   goal set is skipped silently, not reported as drifting" and "zero commits is not judged for
+   drift" both stay true at the data layer, not just in the prompt wording). A missing key, or a
+   non-string/empty value, for a repo that *was* eligible puts that repo in `drift_unavailable` -
+   identical malformed-value handling to `advice`/`unavailable` (D25 point 4), which is what makes
+   "a malformed drift verdict degrades that one project only" checkable: every other project's
+   `advice`/`drift` outcome is computed independently and is unaffected.
+4. **Render:** a new fifth section, `## Goal check`, appended after "This week's focus" -
+   `_focus_item_text` and the existing four sections' functions are untouched by #29. One line per
+   tracked repo with a non-empty `goal` and at least one commit this week that has an entry in
+   `data.coaching.drift` - each line names the goal (or a short quote of it) and cites at least one
+   commit subject, satisfying the AC "so I can disagree with it on evidence." The section is
+   **absent entirely** (no heading, no placeholder line) when there is nothing to show: `--no-llm`,
+   `data.coaching is None`, no tracked repo has a goal, or no goal-bearing repo had commits this
+   week. This matches `AGENTS.md`'s `coaching = None` rule (nothing new to special-case - the
+   section simply doesn't append) and keeps it a fifth *optional* section rather than a change to
+   the four-section contract `render_report_markdown`'s docstring already promises.
+5. #29 updates `docs/privacy.md`: "What is never sent" drops "Goal text," a new line under "What
+   is sent" states that goal text is sent for projects that have one set, and "What this document
+   does not yet cover" is removed (this is the issue it named). Matches the pattern D14/D24/D26
+   already set for keeping that document truthful the moment the feature it describes ships.
+
+**Reason:** Point 1 is the smallest possible plumbing change and was already implicitly promised
+by D24 ("sending a project's goal ... is #29's job") - `report.py` already has the value in scope,
+so there is no new fetch to design. Point 2 is the only reading that satisfies both of #29's own
+Constraints simultaneously ("same batched call," never a second request) and its AC that a
+malformed drift verdict must degrade independently of that repo's advice - a single shared string
+cannot do both. Point 3 is what makes point 2's independence assertable in code and in tests, the
+same reasoning D25 point 3 already used for `advice`/`unavailable`. Point 4 resolves the only
+placement `render_report_markdown` has room for without reopening #28/D27 (a closed, shipped
+decision) - "each project gets a verdict" is structurally incompatible with a section already
+capped at one item, so it needs its own section rather than being squeezed into "This week's
+focus." Point 5 is D14/D24's own stated obligation for this exact issue, made concrete now that
+the schema and section it describes are pinned down instead of left as a future TODO.
+
+**Cost accepted:** The response schema changes shape a second time (D25 shipped one breaking
+change already, from nothing to `{repo: string}`; this is `{repo: string}` to `{"advice": {...},
+"drift": {...}}`) - any prompt or scratch tooling written against the flat #26 shape needs
+updating alongside #29's implementation. Accepted because #25/#26/#29 are the only three issues
+that ever construct or parse this request/response, and D24 named #29 specifically as the one
+allowed to extend it. The report grows a fifth section, which no longer matches
+`render_report_markdown`'s current docstring ("the four-section retro") - #29 updates that
+docstring alongside the change; this is not a silent contract break, it is the one issue
+authorized to widen it.
+
+**Applies to:** [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14)
