@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
@@ -62,6 +63,23 @@ def _table(rows: list[Decision], color: str) -> Table:
             why += f"  [yellow]polish: {', '.join(d.polish)}[/yellow]"
         table.add_row(d.repo.name, d.repo.age_label, why)
     return table
+
+
+def render_changes(changes: list[Decision]) -> None:
+    """The exact repos --apply is about to make private, stars/forks included.
+
+    Shown before the warnings and the confirmation prompt, so the counts about to be
+    lost forever are visible right where the decision gets made.
+    """
+    console.print()
+    console.print(f"[bold yellow]About to make {len(changes)} repos private:[/bold yellow]")
+    table = Table(show_header=True, box=None, padding=(0, 1, 0, 4))
+    table.add_column("repo", style="yellow", no_wrap=True)
+    table.add_column("stars", justify="right", style="dim")
+    table.add_column("forks", justify="right", style="dim")
+    for d in changes:
+        table.add_row(escape(d.repo.name), str(d.repo.stars), str(d.repo.forks))
+    console.print(table)
 
 
 def render_warnings(count: int) -> None:

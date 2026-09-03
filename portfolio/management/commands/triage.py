@@ -7,6 +7,8 @@ This command is only the terminal surface: read settings, fetch, render, and - w
 
 from __future__ import annotations
 
+import sys
+
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from rich.console import Console
@@ -81,14 +83,18 @@ class Command(BaseCommand):
                     console.print("[green]Nothing to apply.[/green]")
                     return
 
+                render.render_changes(changes)
                 render.render_warnings(len(changes))
                 if not options["yes"] and not self._confirm():
                     console.print("[dim]Aborted. Nothing changed.[/dim]")
                     return
 
-                self._apply(gh, changes)
+                _applied, failed = self._apply(gh, changes)
         except GitHubError as exc:
             raise CommandError(str(exc)) from exc
+
+        if options["apply"] and failed:
+            sys.exit(1)
 
     @staticmethod
     def _confirm() -> bool:
@@ -112,17 +118,22 @@ class Command(BaseCommand):
                 repo.has_release = gh.has_release(repo.full_name)
                 progress.advance(task)
 
-    def _apply(self, gh: GitHub, changes) -> None:
+    def _apply(self, gh: GitHub, changes) -> tuple[int, int]:
+        """Patch every repo in `changes`. Returns (applied, failed) - both counted,
+        never folded into each other, so the caller can report and exit accordingly.
+        """
         from portfolio.models import TriageDecision, TriageRun
 
         run = TriageRun.objects.create()
         applied = 0
+        failed = 0
         for decision in changes:
             name = decision.repo.full_name
             try:
                 gh.make_private(name)
             except GitHubError as exc:
                 console.print(f"  [red]FAILED[/red] {name}: {escape(str(exc))}")
+                failed += 1
                 continue
             console.print(f"  [yellow]private[/yellow] {name}")
             TriageDecision.objects.create(
@@ -133,10 +144,10 @@ class Command(BaseCommand):
             )
             applied += 1
 
-        if applied:
-            console.print(
-                f"\n[bold]{applied} repos made private.[/bold] "
-                "Recorded in the database. Nothing was deleted."
-            )
-        else:
+        if not applied:
             run.delete()
+
+        console.print(
+            f"\n[bold]{applied} repos made private, {failed} failed.[/bold] Nothing was deleted."
+        )
+        return applied, failed
