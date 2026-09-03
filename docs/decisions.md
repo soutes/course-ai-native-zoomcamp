@@ -1472,3 +1472,93 @@ fixing it would mean building the transition-history model D17 already declined 
 scope for a future issue if it is ever actually needed, not #31's to invent.
 
 **Applies to:** [#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13), [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19), [#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32)
+
+---
+
+## D31 - #32 is computable from stored `RepoWeek` + the drop's `status_changed_at`, not blocked by D17; it reuses #14's `weeks_since_last_commit` anchored at the drop week instead of "now," and the aggregate is the median, zeros included
+
+**Question:** #32's filed body asks "how many silent weeks passed before I admitted it was over,"
+and its Constraints name "the lifecycle transitions (#19)" and "stored `RepoWeek` rows (#13)" as
+the sources - but D17 already established that `Project` (#19) keeps **no transition history**:
+one `status`/`status_reason`/`status_changed_at` set, overwritten on every re-ack. Read literally,
+"the lifecycle transitions" (plural) could be misread as needing a log of every past transition to
+find "the week the drop was recorded," which D17 explicitly declined to build. Separately, #32's
+own AC requires a project "dropped while still active" to show `0`, and a project "with no commit
+history at all" to be reported as such rather than a large number - both of these are exactly the
+shape `#14`'s `weeks_since_last_commit`/`is_stalled` (`portfolio/services/stalled.py`) already
+handles, just measured against "now" instead of a fixed past date. D30 (for #31) already anticipated
+this: point 3 says `weeks_since_last_commit` returning `None` is rendered as "no commit history,"
+"the same convention #32 already requires for its own no-history case" - #31 was written expecting
+#32 to reuse the identical function, not invent a second one. Third, #32's own AC asks for "the
+median or mean" as the yearly aggregate without picking one, the same shape of open fork D16/D22/D30
+already hit elsewhere. Fourth, it is unstated whether a drop-while-active project (`0` weeks) counts
+toward that aggregate, or is excluded as not really a "delay."
+
+**Decision:**
+1. **No transition history is needed, and none is built.** "The week the drop was recorded" is
+   `Project.status_changed_at` for a `Status.DROPPED` project - the single timestamp D17 already
+   keeps, read once, not iterated. #32 does not reopen D17; it needs exactly one point in time per
+   dropped project, which is what the existing field already gives it.
+2. **Reuses `#14`'s `weeks_since_last_commit` verbatim, anchored at the drop week instead of "now."**
+   For each dropped project (the `dropped` list `year_summary` (#31) already computes, D30 point 2),
+   convert `status_changed_at` to its own ISO week label the same way `_endings` already computes the
+   ending's year (`status_changed_at.astimezone(tz).isocalendar()` → `f"{iso_year}-W{iso_week:02d}"`,
+   no new helper), then call `stalled.weeks_since_last_commit(last_commit_week, drop_week, tz)` with
+   `last_commit_week` sourced from `stalled_lookup.most_recent_commit_week(project.repo, drop_week)` -
+   the identical two functions #31/#14 already use, just with `drop_week` in the "reported week" slot
+   instead of the year's reference week. This is what makes the two ACs fall out for free, not as
+   special cases: a commit stored for the drop week itself gives `0` (a project dropped while still
+   committing that same week reads as `0`, "a decision, not a delay"); no `RepoWeek` row with commits
+   at or before `drop_week` gives `None`, rendered as "no commit history" - the exact convention D30
+   point 3 already named for this issue.
+3. **New module, same split as #14/#31:** `portfolio/services/time_to_decision.py`, Django-free,
+   holding the pure aggregation step (below) and a `DroppedRow` dataclass
+   (`repo: str`, `end_date: datetime`, `weeks_silent: int | None`) that `year.py`'s `dropped` field
+   changes type to (`list[DroppedRow]`, was `list[EndedRow]`) - `shipped` stays `list[EndedRow]`
+   unchanged, since shipped projects never carry this number (the issue's own AC). The Django-aware
+   lookup (converting `status_changed_at` to a week label, calling `most_recent_commit_week`) lives
+   in `year.py` itself, alongside `_endings`/`_silent_rows`, which already do the identical
+   `Project`/`RepoWeek` querying for this same function - not a second `_lookup.py` file, since #31
+   already is that Django-aware companion for this whole page.
+4. **Aggregate is the median, weeks silent across every dropped project in the requested year,
+   drop-while-active (`0`) included, `None` (no commit history) excluded.** Median, not mean: one
+   project abandoned after a long silence would otherwise skew a mean upward and misstate the
+   typical case, and #32's own Constraint ("no score, no grade, no trend line") favours the more
+   robust, more literally-readable statistic. Zeros are included because a fast, decisive drop is a
+   real data point about indecision (or its absence) for the year, not noise to filter out -
+   excluding it would inflate the reported number and hide exactly the decisiveness the feature
+   exists to surface. A project with no commit history contributes no numeric "how long did I wait"
+   answer and is excluded from the calculation the same way it is excluded from any other numeric
+   average; it still renders in the per-project list as "no commit history." An even count of
+   qualifying weeks-silent values averages the two middle ones, which can be a `.5` value - reported
+   as-is (`"6.5 weeks"`), still a plain number, no rounding invented to force an integer. When zero
+   dropped projects in the year have a numeric answer (no drops that year, or every drop has no
+   history), no aggregate line renders - not a `0` or placeholder, matching the "absent, not blanked
+   out" convention D30 point 7 already set for this page's empty state.
+5. **Render placement:** the yearly command/page's existing dropped list gains the per-project
+   number (or "no commit history") next to each row; the aggregate renders as one line below the
+   dropped group, e.g. `"Median time-to-decision: N weeks"`. No change to the shipped or silent
+   groups, and no change to #31's own already-shipped `is_empty`/empty-state rule (D30 point 7) -
+   #32 adds a number to an existing row, it does not add a new top-level empty state.
+
+**Reason:** Point 1 closes the only real risk in #32's own Constraints wording - that "lifecycle
+transitions" sounds like it needs history D17 already declined to build, when in fact one timestamp
+is sufficient because the question is "how long before this one drop," not "every transition this
+project ever had." Point 2 is the same reasoning D18/D19/D21/D30 already applied to other issues
+in this backlog: a filed body describes new-sounding logic that a shipped module already computes,
+just parameterized differently - reusing it exactly is what keeps the "dropped while active shows
+`0`" and "no history shows as such" ACs true by construction instead of by a second, subtly
+different implementation. Point 3 follows #30/#31's own established file-per-concern split
+(pure module + Django-aware lookup) without inventing a third lookup file where #31's own
+`year.py` already fills that role for this page. Point 4 resolves the median-vs-mean fork the same
+way D16/D22/D30 resolved their own open forks - one answer, with the reason named - and picks
+median specifically because a plain number of weeks that stays representative under one outlier
+project matches the constraint against "a score, a grade, a trend line" better than a mean would.
+
+**Cost accepted:** None beyond ordinary shared-function reuse - #32 adds no new fetch, no new
+model, no migration, and reopens no closed decision. The median excludes no-history projects from
+its own denominator, so the reported aggregate is silently over a smaller population than "every
+dropped project" when some have no history; that is visible in the per-project list (each one
+still shows "no commit history" individually), just not folded into the single aggregate number.
+
+**Applies to:** [#32](https://github.com/soutes/course-ai-native-zoomcamp/issues/32), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13), [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19), [#31](https://github.com/soutes/course-ai-native-zoomcamp/issues/31)
