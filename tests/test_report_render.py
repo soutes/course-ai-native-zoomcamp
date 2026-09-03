@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from portfolio.services.render import (
     RepoReportData,
     WeeklyReportData,
+    abandoned_count,
     build_report_snapshot,
     render_report_markdown,
 )
@@ -329,3 +330,48 @@ def test_snapshot_is_json_serializable():
     data = WeeklyReportData(week="2026-W35", repos=[repo])
 
     json.dumps(build_report_snapshot(data))  # must not raise
+
+
+# --- abandoned_count (D4, #36) -----------------------------------------------------
+
+
+def test_abandoned_count_counts_stalled_repo_report_data():
+    repos = [
+        make_repo(repo="me/fine", stalled=False),
+        make_repo(repo="me/stalled-one", stalled=True),
+        make_repo(repo="me/stalled-two", stalled=True),
+    ]
+    assert abandoned_count(repos) == 2
+
+
+def test_abandoned_count_zero_when_nothing_stalled():
+    repos = [make_repo(stalled=False), make_repo(repo="me/other", stalled=False)]
+    assert abandoned_count(repos) == 0
+
+
+def test_abandoned_count_empty_portfolio():
+    assert abandoned_count([]) == 0
+
+
+def test_abandoned_count_reads_dicts_from_the_stored_weeklyreport_snapshot():
+    """D5: #36 reads `WeeklyReport.data["repos"]`, plain dicts, not `RepoReportData`
+    instances - the shared helper must accept either shape without conversion."""
+    repos = [
+        {"repo": "me/fine", "stalled": False},
+        {"repo": "me/stalled", "stalled": True},
+    ]
+    assert abandoned_count(repos) == 1
+
+
+def test_abandoned_count_matches_build_report_snapshot_output():
+    """The helper stays consistent whether fed the live dataclasses (#16's own path)
+    or the JSON snapshot those dataclasses were persisted as (#36's path) - the two
+    must never drift (D4's whole point)."""
+    repos = [
+        make_repo(repo="me/alpha", stalled=True),
+        make_repo(repo="me/beta", stalled=False),
+    ]
+    data = WeeklyReportData(week="2026-W35", repos=repos)
+    snapshot = build_report_snapshot(data)
+
+    assert abandoned_count(repos) == abandoned_count(snapshot["repos"]) == 1

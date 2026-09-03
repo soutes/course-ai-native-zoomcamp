@@ -3,26 +3,51 @@
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 
-from .models import Project, TriageRun, WeeklyReport
+from .models import WeeklyReport
+from .services import render as render_service
 from .services.markdown_render import render_markdown_html
-from .services.week import week_window
+from .services.week import week_label, week_window
 
 
 def dashboard(request):
-    """Portfolio at a glance: tracked projects and the triage history."""
-    projects = list(Project.objects.all())
+    """Landing page (#36): "where am I right now," this week.
+
+    Reads only the current ISO week's stored `WeeklyReport` row (D5) - no GitHub
+    call, no LLM call, opening the page costs nothing. When the current week has
+    no stored data yet (`report` has not run for it), the page says so and links
+    to the most recent week that does, instead of 404ing or rendering empty
+    sections (`WeeklyReport.Meta.ordering = ["-week"]` makes `.first()` the most
+    recent by ISO week label, same lexicographic-sort property `retro_list` relies
+    on). The abandoned count is computed via the shared D4 helper
+    (`portfolio.services.render.abandoned_count`) from #14's stalled flags already
+    carried in the stored snapshot - not recomputed, not re-fetched.
+    """
+    current_week = week_label(week_window())
+    report = WeeklyReport.objects.filter(week=current_week).first()
+
+    if report is not None:
+        return render(
+            request,
+            "portfolio/dashboard.html",
+            {
+                "current_week": current_week,
+                "report": report,
+                "abandoned": render_service.abandoned_count(report.data.get("repos", [])),
+                "report_html": render_markdown_html(report.markdown),
+                "most_recent": None,
+            },
+        )
+
+    most_recent = WeeklyReport.objects.first()
     return render(
         request,
         "portfolio/dashboard.html",
         {
-            "projects": projects,
-            "active": [p for p in projects if p.status == Project.Status.ACTIVE],
-            "ended": [
-                p
-                for p in projects
-                if p.status in {Project.Status.SHIPPED, Project.Status.DROPPED}
-            ],
-            "runs": TriageRun.objects.prefetch_related("decisions")[:5],
+            "current_week": current_week,
+            "report": None,
+            "abandoned": None,
+            "report_html": None,
+            "most_recent": most_recent,
         },
     )
 

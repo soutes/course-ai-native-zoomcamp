@@ -165,6 +165,26 @@ class WeeklyReportData:
     coaching: str | None = None
 
 
+def abandoned_count(repos: list[RepoReportData] | list[dict]) -> int:
+    """How many tracked repos are flagged stalled this week (D4 in docs/decisions.md).
+
+    The headline number #36's dashboard leads with - "how many projects have I
+    quietly abandoned." Computed straight from #14's stalled flags: `repos` already
+    excludes shipped/dropped repos and paused-in-force repos (`Project.in_weekly_report`
+    filters those out before a `RepoReportData` list - or the `WeeklyReport.data["repos"]`
+    snapshot built from it - ever exists), so this is a plain count of `stalled=True`
+    entries, not a re-filter of status/pause rules.
+
+    Accepts either `RepoReportData` instances (the terminal/#16 path, and #23's future
+    header line) or the plain dicts stored in `WeeklyReport.data["repos"]` (D5 - the web
+    path, #36 and later #17) - both shapes carry a `stalled` field, so either works
+    without the caller converting one into the other.
+    """
+    return sum(
+        1 for r in repos if (r.stalled if isinstance(r, RepoReportData) else bool(r.get("stalled")))
+    )
+
+
 def _s(n: int) -> str:
     """Pluralizes: `_s(1)` -> "", `_s(2)` -> "s"."""
     return "" if n == 1 else "s"

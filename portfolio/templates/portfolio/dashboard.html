@@ -1,9 +1,9 @@
-{% load static %}<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>weekly - portfolio</title>
+  <title>weekly - this week</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -14,59 +14,76 @@
     h2 { font-size: 1rem; margin-top: 2.5rem; text-transform: uppercase;
          letter-spacing: .08em; opacity: .6; }
     .sub { opacity: .6; margin-top: 0; }
-    ul { list-style: none; padding: 0; }
-    li { padding: .5rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-    .repo { font-weight: 600; }
-    .goal { opacity: .7; }
-    .empty { opacity: .5; font-style: italic; }
-    .tag { font-size: .8rem; padding: .1rem .45rem; border-radius: .25rem;
-           border: 1px solid currentColor; opacity: .7; }
+    ul { padding-left: 1.2rem; }
+    li { padding: .3rem 0; }
     a { color: inherit; }
+    code { opacity: .85; }
+    .links { opacity: .6; margin-top: .3rem; }
+
+    .abandoned {
+      margin: 1.5rem 0 2rem;
+      padding: 1.25rem 1.5rem;
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border-radius: .5rem;
+    }
+    .abandoned .count {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+      display: block;
+    }
+    .abandoned .count.zero { opacity: .5; }
+    .abandoned .label {
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-size: .8rem;
+      opacity: .7;
+    }
+
+    .empty-state {
+      margin: 2rem 0;
+      padding: 1.25rem 1.5rem;
+      border: 1px dashed color-mix(in srgb, currentColor 30%, transparent);
+      border-radius: .5rem;
+      opacity: .85;
+    }
   </style>
 </head>
 <body>
   <h1>weekly</h1>
-  <p class="sub">A Monday-morning retrospective over a GitHub portfolio.</p>
+  <p class="sub">This week: {{ current_week }}</p>
 
-  <h2>Active projects ({{ active|length }})</h2>
-  <ul>
-    {% for project in active %}
-      <li>
-        <span class="repo">{{ project.repo }}</span>
-        <div class="goal">{{ project.goal|default:"no goal set" }}</div>
-      </li>
-    {% empty %}
-      <li class="empty">
-        Nothing tracked yet. Add a project in the <a href="/admin/">admin</a>.
-      </li>
-    {% endfor %}
-  </ul>
+  {% if report %}
+    <div class="abandoned">
+      <span class="label">Abandoned this week</span>
+      <span class="count{% if abandoned == 0 %} zero{% endif %}">{{ abandoned }}</span>
+      <span class="label">tracked project{{ abandoned|pluralize }} stalled 4+ weeks</span>
+    </div>
 
-  {% if ended %}
-    <h2>Ended ({{ ended|length }})</h2>
-    <ul>
-      {% for project in ended %}
-        <li>
-          <span class="repo">{{ project.repo }}</span>
-          <span class="tag">{{ project.get_status_display }}</span>
-          <div class="goal">{{ project.status_reason }}</div>
-        </li>
-      {% endfor %}
-    </ul>
+    <p class="sub">Generated {{ report.generated_at|date:"Y-m-d H:i" }}</p>
+
+    {{ report_html|safe }}
+
+    <p class="links">
+      <a href="{% url 'portfolio:retro_detail' week=current_week %}">permalink for {{ current_week }}</a>
+      &middot;
+      <a href="{% url 'portfolio:retro_list' %}">all retros</a>
+    </p>
+  {% else %}
+    <div class="empty-state">
+      <p>No report yet for the current week ({{ current_week }}).</p>
+      {% if most_recent %}
+        <p>
+          Most recent: <a href="{% url 'portfolio:retro_detail' week=most_recent.week %}">{{ most_recent.week }}</a>
+        </p>
+      {% else %}
+        <p>No retros stored yet. Run <code>manage.py report</code> to generate one.</p>
+      {% endif %}
+    </div>
+
+    <p class="links">
+      <a href="{% url 'portfolio:retro_list' %}">all retros</a>
+    </p>
   {% endif %}
-
-  <h2>Triage history</h2>
-  <ul>
-    {% for run in runs %}
-      <li>
-        <span class="repo">{{ run.ran_at|date:"Y-m-d H:i" }}</span>
-        &mdash; {{ run.decisions.count }} repo{{ run.decisions.count|pluralize }} made private
-      </li>
-    {% empty %}
-      <li class="empty">
-        No triage applied yet. Run <code>manage.py triage</code> to see the plan.
-      </li>
-    {% endfor %}
-  </ul>
 </body>
 </html>
