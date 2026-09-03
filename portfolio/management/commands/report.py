@@ -7,6 +7,12 @@ print it, and persist a `WeeklyReport` row (#16, D5 in docs/decisions.md) so
 #17/#36 can render later with no GitHub call. All the shaping - what counts as
 "went well", the never-empty rule, the one focus item - lives in
 `portfolio/services/render.py`, which knows nothing about Django or GitHub.
+
+Coaching (#27, D26): `--no-llm` skips `portfolio.coach` entirely, never importing it.
+Without the flag, a missing `LLM_API_KEY` or a failed/unparseable LLM response both
+print one warning and degrade to `coaching=None` - the same output `--no-llm`
+produces. `portfolio.coach` is imported lazily, only inside `_get_coaching`, so it
+never loads on a `--no-llm` run.
 """
 
 from __future__ import annotations
@@ -50,6 +56,14 @@ class Command(BaseCommand):
         )
         parser.add_argument("--out", default=None, help="Also write plain markdown to this file.")
         parser.add_argument("--refresh", action="store_true", help="Ignore the cache and re-fetch.")
+        parser.add_argument(
+            "--no-llm",
+            action="store_true",
+            help=(
+                "Skip coaching entirely - no LLM call is made and `portfolio.coach` is "
+                "never imported. Works with LLM_API_KEY unset."
+            ),
+        )
         parser.add_argument(
             "--last",
             action="store_true",
@@ -248,6 +262,7 @@ class Command(BaseCommand):
         data = render.WeeklyReportData(
             week=week, repos=repo_rows, new_repos=new_repos, coaching=None
         )
+        data.coaching = self._get_coaching(data, no_llm=options["no_llm"])
         markdown = render.render_report_markdown(data)
 
         if options["out"]:
@@ -266,3 +281,39 @@ class Command(BaseCommand):
             week=week,
             defaults={"markdown": markdown, "data": render.build_report_snapshot(data)},
         )
+
+    def _get_coaching(self, data: render.WeeklyReportData, *, no_llm: bool):
+        """Resolve `WeeklyReportData.coaching` for this run (#27, D26).
+
+        `--no-llm` skips this entirely and returns `None` without ever importing
+        `portfolio.coach` - the import below is the only place in this module that
+        names that module, and it only runs on this branch, so a `--no-llm` run never
+        puts `portfolio.coach` in `sys.modules` (D26 point 1).
+
+        Without the flag: a missing `LLM_API_KEY` and a `get_coaching()` call that
+        returns `None` (bad key, network failure, unparseable response - already
+        handled inside `get_coaching`, #26) both print exactly one warning line and
+        resolve to `coaching=None` - the same output `--no-llm` produces, reached by
+        a different door (D26 point 2-3). `get_coaching`'s own failure handling is not
+        duplicated here - only whether to call it is decided in this method.
+        """
+        if no_llm:
+            return None
+
+        from portfolio.coach import CoachConfigError, build_client, get_coaching
+
+        try:
+            client = build_client()
+        except CoachConfigError:
+            console.print("[yellow]Skipping coaching: LLM_API_KEY is not set.[/yellow]")
+            return None
+
+        with client:
+            coaching = get_coaching(data, client)
+
+        if coaching is None:
+            console.print(
+                "[yellow]Skipping coaching: the LLM request did not return usable advice.[/yellow]"
+            )
+
+        return coaching

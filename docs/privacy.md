@@ -31,12 +31,13 @@ OpenAI-compatible endpoint can be configured instead by changing the environment
 
 ## When nothing is sent
 
-Nothing is sent unless the LLM layer is explicitly enabled. Today, there is no LLM code in the
-app at all, so nothing is sent under any circumstance. Once the LLM layer exists, not setting
-the provider's API key means nothing is sent.
+`manage.py report --no-llm` skips coaching entirely - no LLM request is made, and
+`portfolio.coach` (the only module that talks to the LLM) is never even imported.
 
-There is no `--no-llm` flag yet. Until it ships, leaving the API key unset is the only way to
-guarantee that nothing is sent.
+Without the flag, an unset `LLM_API_KEY` degrades the same way: the report still renders in
+full, no request is made, and one warning line is printed explaining that coaching was
+skipped. This holds whether or not `--no-llm` is passed - leaving the key unset guarantees
+nothing is sent either way.
 
 ## What this document does not yet cover
 
