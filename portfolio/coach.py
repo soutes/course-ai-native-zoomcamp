@@ -179,15 +179,30 @@ _SYSTEM_PROMPT = (
     "You are a coach reviewing one person's weekly portfolio of side projects. "
     "You are given, for every tracked repo this week: whether it was silent "
     "(zero commits), a list of this week's commit subjects, and diffstat "
-    "numbers (lines added, lines removed, files touched). You do not have "
-    "access to the codebase, any file, or any diff - only what is listed "
-    "below. Give advice about behavior, not code: talk about patterns like "
-    "starting a project before finishing another, going silent on one repo "
-    "while another gets all the attention, or working in short bursts versus "
-    "a steady rhythm. Never suggest a code change, a refactor, or comment on "
-    "implementation details you cannot see. Phrase each repo's advice as "
-    "something to do in the coming week, not a recap of the week that just "
-    "ended."
+    "numbers (lines added, lines removed, files touched). Some repos also "
+    "carry a stated goal - one sentence describing what finishing that "
+    "project looks like. You do not have access to the codebase, any file, "
+    "or any diff - only what is listed below. Give advice about behavior, "
+    "not code: talk about patterns like starting a project before finishing "
+    "another, going silent on one repo while another gets all the "
+    "attention, or working in short bursts versus a steady rhythm. Never "
+    "suggest a code change, a refactor, or comment on implementation "
+    "details you cannot see. Phrase each repo's advice as something to do "
+    "in the coming week, not a recap of the week that just ended.\n\n"
+    "For every repo that has a stated goal AND had at least one commit "
+    "this week, also judge whether this week's commits moved toward that "
+    "goal - a drift verdict. Skip drift entirely (no verdict, not even a "
+    "'no drift' one) for a repo with no stated goal, or a repo with zero "
+    "commits this week - those are not yours to judge. Judge the work "
+    "against the goal, never the person: never phrase a verdict as a "
+    "judgement of effort or character. Every verdict must cite at least "
+    "one of this week's commit subjects as evidence, so it can be checked. "
+    "Either confirm briefly that the commits moved toward the goal, or call "
+    "out drift by naming the goal and what the commits were about instead.\n\n"
+    "Return your answer as a single JSON object with exactly two top-level "
+    'keys: "advice", an object mapping each repo name to its advice '
+    'string, and "drift", an object mapping each goal-and-commits-eligible '
+    "repo name to its drift verdict string. Return no other text."
 )
 
 
@@ -196,9 +211,10 @@ def _repo_prompt_lines(repo: RepoReportData) -> list[str]:
 
     Carries the repo name, the silent flag, commit subjects (capped at
     `MAX_COMMIT_SUBJECTS_PER_REPO`, oldest dropped first, with a note of how
-    many were omitted), and diffstat numbers. Never a diff, never a file's
-    content, never `repo.description` or any goal text (D24) - only fields
-    this function reads below.
+    many were omitted), diffstat numbers, and - only when `repo.goal` is
+    non-empty - a `goal: {text}` line (#29, D28; D24 named #29 as the one
+    issue allowed to send goal text). Never a diff, never a file's content,
+    never `repo.description` - only fields this function reads below.
     """
     lines = [f"### {repo.repo}"]
     lines.append(f"silent this week: {'yes' if repo.commits == 0 else 'no'}")
@@ -207,6 +223,8 @@ def _repo_prompt_lines(repo: RepoReportData) -> list[str]:
         f"diffstat: +{repo.lines_added}/-{repo.lines_removed} lines across "
         f"{repo.files_touched} file(s) touched"
     )
+    if repo.goal:
+        lines.append(f"goal: {repo.goal}")
 
     subjects = repo.commit_subjects
     total = len(subjects)
@@ -244,6 +262,10 @@ def build_batched_request(report: WeeklyReportData) -> list[dict[str, str]]:
     database query. Never includes a full diff, file content, a secret
     (`GITHUB_TOKEN`/`LLM_API_KEY`), or a project's goal text (`RepoReportData`
     has no `goal` field - D24).
+
+    A repo's goal text (`RepoReportData.goal`) is included via
+    `_repo_prompt_lines` only when that repo has one set (#29, D28) - D24
+    named #29 as the one issue allowed to extend this call to send it.
 
     Returns the `messages` list only; sending it through
     `CoachClient.chat_completion` and returning that call's raw, unparsed
@@ -290,17 +312,28 @@ _TRUNCATION_MARKER = "... [truncated]"
 
 @dataclass
 class CoachingResult:
-    """The parsed, per-repo outcome of one batched coaching request (D25).
+    """The parsed, per-repo outcome of one batched coaching request (D25, extended by
+    #29/D28).
 
     Every repo in the `WeeklyReportData.repos` that was sent lands in exactly one of
     `advice` (a usable, capped, escaped advice string) or `unavailable` (sent, but no
     usable advice came back for it) - never silently absent from both. A repo name
     that appears in the model's response but was never sent is dropped, not added to
     either collection.
+
+    `drift`/`drift_unavailable` mirror that same shape for the goal-drift verdict
+    (#29, D28), but only for the subset of repos that were *eligible* for drift
+    judgement - sent with both a non-empty `RepoReportData.goal` and `commits > 0`.
+    A repo with no goal, or zero commits, is skipped silently and appears in
+    neither list (that is #14's/D28's job, not a drift outcome). An eligible repo
+    with a missing/malformed verdict lands in `drift_unavailable`, independent of
+    whether that same repo's `advice` resolved successfully.
     """
 
     advice: dict[str, str] = field(default_factory=dict)
     unavailable: list[str] = field(default_factory=list)
+    drift: dict[str, str] = field(default_factory=dict)
+    drift_unavailable: list[str] = field(default_factory=list)
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -323,12 +356,14 @@ def _strip_markdown_fence(text: str) -> str:
 
 
 def _parsed_advice_object(response: dict[str, Any]) -> dict[str, Any] | None:
-    """Recover the flat `{"repo-name": "advice text"}` object from a raw response.
+    """Recover the top-level `{"advice": {...}, "drift": {...}}` object (D28) from a
+    raw response.
 
     Returns `None` (total failure, per D25) when `choices[0].message.content` is
     missing/not a string, when the content is not valid JSON after fence-stripping,
     or when it parses to something other than a JSON object (e.g. a bare array or
-    string) - `json.loads` succeeding is not enough on its own.
+    string) - `json.loads` succeeding is not enough on its own. This function only
+    recovers the outer object; `get_coaching` reads `"advice"`/`"drift"` off it.
     """
     try:
         content = response["choices"][0]["message"]["content"]
@@ -349,8 +384,32 @@ def _parsed_advice_object(response: dict[str, Any]) -> dict[str, Any] | None:
     return parsed
 
 
+def _clean_and_escape(value: object, unavailable: list[str], repo_name: str) -> str | None:
+    """Shared per-repo cleanup for one advice/drift value (D25 point 4, reused by D28).
+
+    Returns the stripped, capped, escaped string on success. On any failure - not a
+    string, or empty/whitespace-only after stripping - appends `repo_name` to
+    `unavailable` and returns `None`. Identical handling for `advice` and `drift`, so
+    a malformed value in one never affects the other's outcome for the same repo.
+    """
+    if not isinstance(value, str):
+        unavailable.append(repo_name)
+        return None
+
+    cleaned = value.strip()
+    if not cleaned:
+        unavailable.append(repo_name)
+        return None
+
+    if len(cleaned) > MAX_ADVICE_CHARS:
+        cleaned = cleaned[:MAX_ADVICE_CHARS].rstrip() + _TRUNCATION_MARKER
+
+    return escape_markup(cleaned)
+
+
 def get_coaching(report: WeeklyReportData, client: CoachClient) -> CoachingResult | None:
-    """Get per-repo coaching advice for `report`, or `None` on any failure.
+    """Get per-repo coaching advice and goal-drift verdicts for `report`, or `None` on
+    any failure.
 
     Calls `send_batched_request(client, report)` itself (#26 is the first issue to
     actually invoke it against real report data). Never raises: `CoachRequestError`
@@ -358,14 +417,29 @@ def get_coaching(report: WeeklyReportData, client: CoachClient) -> CoachingResul
     caught here and resolve to `None` - identical to what `--no-llm` (#27) already
     produces, per AGENTS.md's determinism rule and D25.
 
-    A response that fails to parse as the expected flat, repo-keyed JSON object
-    (missing content, non-JSON, fenced-but-still-broken, or valid JSON that is not an
-    object) is also a total failure and returns `None`. Once parsed, every repo in
-    `report.repos` is resolved individually: a missing key, or a value that is not a
-    non-empty string, puts that repo in `unavailable`; everything else is stripped,
-    truncated to `MAX_ADVICE_CHARS`, escaped the same way `render.py` escapes other
-    GitHub-sourced text (`rich.markup.escape`), and stored in `advice`. A key naming a
-    repo that was never sent is dropped silently.
+    A response that fails to parse as the expected top-level JSON object (missing
+    content, non-JSON, fenced-but-still-broken, or valid JSON that is not an object)
+    is a total failure and returns `None`. Once parsed, `parsed.get("advice", {})`
+    and `parsed.get("drift", {})` are read independently (#29, D28) - a response
+    missing either key entirely degrades that key's whole bucket to empty, exactly
+    as D25/D26 already specified for the pre-#29 flat shape (every sent repo lands
+    in `unavailable`, or every eligible repo in `drift_unavailable`).
+
+    Every repo in `report.repos` is resolved individually for `advice`/`unavailable`:
+    a missing key, or a value that is not a non-empty string, puts that repo in
+    `unavailable`; everything else is stripped, truncated to `MAX_ADVICE_CHARS`,
+    escaped the same way `render.py` escapes other GitHub-sourced text
+    (`rich.markup.escape`), and stored in `advice`. A key naming a repo that was
+    never sent is dropped silently.
+
+    Drift is resolved only for repos *eligible* for judgement - `repo.goal` non-empty
+    and `repo.commits > 0` (#29, D28) - using the identical clean/cap/escape rule via
+    `_clean_and_escape`, landing in `drift`/`drift_unavailable`. An ineligible repo
+    (no goal, or zero commits) is skipped silently: it appears in neither `drift` nor
+    `drift_unavailable`, matching the "skipped silently, never reported as drifting"
+    ACs. A malformed drift value for one repo never touches that repo's own `advice`
+    outcome, or any other repo's `advice`/`drift` outcome - each is computed
+    independently from its own key lookup.
     """
     try:
         response = send_batched_request(client, report)
@@ -376,23 +450,30 @@ def get_coaching(report: WeeklyReportData, client: CoachClient) -> CoachingResul
     if parsed is None:
         return None
 
+    advice_obj = parsed.get("advice")
+    if not isinstance(advice_obj, dict):
+        advice_obj = {}
+    drift_obj = parsed.get("drift")
+    if not isinstance(drift_obj, dict):
+        drift_obj = {}
+
     advice: dict[str, str] = {}
     unavailable: list[str] = []
+    drift: dict[str, str] = {}
+    drift_unavailable: list[str] = []
 
     for repo in sorted(report.repos, key=lambda r: r.repo):
-        value = parsed.get(repo.repo)
-        if not isinstance(value, str):
-            unavailable.append(repo.repo)
+        cleaned = _clean_and_escape(advice_obj.get(repo.repo), unavailable, repo.repo)
+        if cleaned is not None:
+            advice[repo.repo] = cleaned
+
+        if not repo.goal or repo.commits == 0:
             continue
 
-        cleaned = value.strip()
-        if not cleaned:
-            unavailable.append(repo.repo)
-            continue
+        cleaned_drift = _clean_and_escape(drift_obj.get(repo.repo), drift_unavailable, repo.repo)
+        if cleaned_drift is not None:
+            drift[repo.repo] = cleaned_drift
 
-        if len(cleaned) > MAX_ADVICE_CHARS:
-            cleaned = cleaned[:MAX_ADVICE_CHARS].rstrip() + _TRUNCATION_MARKER
-
-        advice[repo.repo] = escape_markup(cleaned)
-
-    return CoachingResult(advice=advice, unavailable=unavailable)
+    return CoachingResult(
+        advice=advice, unavailable=unavailable, drift=drift, drift_unavailable=drift_unavailable
+    )

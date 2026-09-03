@@ -217,10 +217,20 @@ def test_no_secrets_in_the_prompt():
     assert "fake-key" not in full_text
 
 
-def test_repo_report_data_has_no_goal_field_to_leak():
-    # D24: RepoReportData carries no goal field at all today - if this ever
-    # changes, build_batched_request must not start sending it.
-    assert not hasattr(RepoReportData, "goal")
+def test_goal_text_is_sent_only_when_set():
+    # D28: goal text is sent only for a repo that has one - not for a repo
+    # with an empty/unset goal.
+    with_goal = make_repo(repo="me/withgoal", commit_subjects=["a"])
+    with_goal.goal = "Ship a working v1."
+    without_goal = make_repo(repo="me/nogoal", commit_subjects=["b"])
+    report = WeeklyReportData(week="2026-W35", repos=[with_goal, without_goal])
+
+    content = build_batched_request(report)[1]["content"]
+
+    with_block = content.split("### me/withgoal", 1)[1].split("### ")[0]
+    without_block = content.split("### me/nogoal", 1)[1].split("### ")[0]
+    assert "goal: Ship a working v1." in with_block
+    assert "goal:" not in without_block
 
 
 # --- exactly one HTTP request over an 8-repo fixture --------------------------------

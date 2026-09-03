@@ -59,7 +59,9 @@ def test_valid_response_puts_every_repo_in_advice():
         week="2026-W35",
         repos=[make_repo(repo="me/alpha"), make_repo(repo="me/beta")],
     )
-    payload = json.dumps({"me/alpha": "Ship the small thing first.", "me/beta": "Keep it up."})
+    payload = json.dumps(
+        {"advice": {"me/alpha": "Ship the small thing first.", "me/beta": "Keep it up."}}
+    )
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -146,7 +148,7 @@ def test_missing_key_for_one_repo_degrades_only_that_repo():
         week="2026-W35",
         repos=[make_repo(repo="me/alpha"), make_repo(repo="me/beta")],
     )
-    payload = json.dumps({"me/alpha": "Ship the small thing first."})
+    payload = json.dumps({"advice": {"me/alpha": "Ship the small thing first."}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -164,7 +166,7 @@ def test_missing_key_for_one_repo_degrades_only_that_repo():
 def test_unknown_repo_key_is_dropped_silently():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
     payload = json.dumps(
-        {"me/alpha": "Ship the small thing first.", "me/never-sent": "bogus advice"}
+        {"advice": {"me/alpha": "Ship the small thing first.", "me/never-sent": "bogus advice"}}
     )
 
     client = make_client(lambda request: json_response(payload))
@@ -184,7 +186,9 @@ def test_unknown_repo_key_is_dropped_silently():
 
 def test_json_fence_is_stripped_and_recovered():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
-    fenced = "```json\n" + json.dumps({"me/alpha": "Ship the small thing first."}) + "\n```"
+    fenced = (
+        "```json\n" + json.dumps({"advice": {"me/alpha": "Ship the small thing first."}}) + "\n```"
+    )
 
     client = make_client(lambda request: json_response(fenced))
     try:
@@ -197,7 +201,7 @@ def test_json_fence_is_stripped_and_recovered():
 
 def test_bare_fence_without_json_language_tag_is_also_recovered():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
-    fenced = "```\n" + json.dumps({"me/alpha": "Ship the small thing first."}) + "\n```"
+    fenced = "```\n" + json.dumps({"advice": {"me/alpha": "Ship the small thing first."}}) + "\n```"
 
     client = make_client(lambda request: json_response(fenced))
     try:
@@ -216,7 +220,7 @@ def test_empty_string_value_is_treated_as_unavailable():
         week="2026-W35",
         repos=[make_repo(repo="me/alpha"), make_repo(repo="me/beta")],
     )
-    payload = json.dumps({"me/alpha": "", "me/beta": "Keep it up."})
+    payload = json.dumps({"advice": {"me/alpha": "", "me/beta": "Keep it up."}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -230,7 +234,7 @@ def test_empty_string_value_is_treated_as_unavailable():
 
 def test_whitespace_only_value_is_treated_as_unavailable():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
-    payload = json.dumps({"me/alpha": "   \n\t  "})
+    payload = json.dumps({"advice": {"me/alpha": "   \n\t  "}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -244,7 +248,7 @@ def test_whitespace_only_value_is_treated_as_unavailable():
 
 def test_non_string_value_is_treated_as_unavailable():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
-    payload = json.dumps({"me/alpha": 42})
+    payload = json.dumps({"advice": {"me/alpha": 42}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -262,7 +266,7 @@ def test_non_string_value_is_treated_as_unavailable():
 def test_advice_longer_than_cap_is_truncated_with_marker():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
     long_advice = "x" * (MAX_ADVICE_CHARS + 200)
-    payload = json.dumps({"me/alpha": long_advice})
+    payload = json.dumps({"advice": {"me/alpha": long_advice}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -281,7 +285,7 @@ def test_advice_longer_than_cap_is_truncated_with_marker():
 def test_advice_at_or_under_cap_is_not_truncated():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
     advice = "y" * MAX_ADVICE_CHARS
-    payload = json.dumps({"me/alpha": advice})
+    payload = json.dumps({"advice": {"me/alpha": advice}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -301,7 +305,7 @@ def test_every_sent_repo_lands_in_exactly_one_bucket():
         week="2026-W35",
         repos=[make_repo(repo="me/alpha"), make_repo(repo="me/beta"), make_repo(repo="me/gamma")],
     )
-    payload = json.dumps({"me/alpha": "good advice", "me/gamma": ""})
+    payload = json.dumps({"advice": {"me/alpha": "good advice", "me/gamma": ""}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -320,7 +324,7 @@ def test_every_sent_repo_lands_in_exactly_one_bucket():
 
 def test_advice_containing_bracket_markup_is_escaped():
     report = WeeklyReportData(week="2026-W35", repos=[make_repo(repo="me/alpha")])
-    payload = json.dumps({"me/alpha": "Try [bold red]this[/bold red] approach."})
+    payload = json.dumps({"advice": {"me/alpha": "Try [bold red]this[/bold red] approach."}})
 
     client = make_client(lambda request: json_response(payload))
     try:
@@ -351,7 +355,7 @@ def test_get_coaching_never_makes_a_real_network_call():
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         assert isinstance(client._http._transport, httpx.MockTransport)
-        return json_response(json.dumps({"me/demo": "advice"}))
+        return json_response(json.dumps({"advice": {"me/demo": "advice"}}))
 
     client = make_client(handler)
     try:

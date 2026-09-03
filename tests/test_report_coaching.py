@@ -253,3 +253,75 @@ def test_no_flag_key_set_and_success_threads_coaching_result_with_no_warning(
 
     row = WeeklyReport.objects.get(week=WEEK)
     assert row.data["week"] == WEEK
+
+
+# --- #29/D28: goal threading, --no-llm sends no goal text, Goal check section --------
+
+
+@pytest.mark.django_db
+def test_no_llm_flag_sends_no_goal_text_even_when_project_has_a_goal(
+    monkeypatch, settings, tmp_path
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    settings.LLM_API_KEY = ""
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE, goal="Ship a working v1.")
+    _install_fake_gh(monkeypatch, FakeGitHub(repos=[make_gh_repo("me/demo")]))
+    _forbid_llm_requests(monkeypatch)
+
+    sys.modules.pop("portfolio.coach", None)
+
+    call_command("report", "--week", WEEK, "--no-llm")
+
+    assert "portfolio.coach" not in sys.modules
+
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "## Goal check" not in row.markdown
+    assert "Ship a working v1." not in row.markdown
+
+
+@pytest.mark.django_db
+def test_project_goal_is_threaded_into_repo_report_data_and_renders_goal_check(
+    monkeypatch, settings, tmp_path, capsys
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    settings.LLM_API_KEY = "fake-key"
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE, goal="Ship a working v1.")
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/demo")])
+
+    from portfolio.services.types import Commit
+
+    def commits_with_one(full_name, window, emails):
+        return [Commit(sha="abc123", authored_at=WINDOW[0], subject="wire up the router")]
+
+    fake_gh.commits_in_window = commits_with_one
+    _install_fake_gh(monkeypatch, fake_gh)
+    _forbid_llm_requests(monkeypatch)
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    import portfolio.coach as coach
+
+    def fake_get_coaching(report, client):
+        # Prove the goal text made it onto RepoReportData without a new query.
+        assert report.repos[0].goal == "Ship a working v1."
+        return coach.CoachingResult(
+            advice={},
+            unavailable=[],
+            drift={"me/demo": 'On track - see "wire up the router".'},
+        )
+
+    monkeypatch.setattr(coach, "build_client", lambda: FakeClient())
+    monkeypatch.setattr(coach, "get_coaching", fake_get_coaching)
+
+    call_command("report", "--week", WEEK)
+
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "## Goal check" in row.markdown
+    assert "Ship a working v1." in row.markdown

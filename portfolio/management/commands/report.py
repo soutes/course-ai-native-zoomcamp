@@ -226,6 +226,7 @@ class Command(BaseCommand):
                                 commit_subjects=commit_subjects,
                                 health=health,
                                 previous=previous,
+                                goal=project.goal,
                             )
                         )
                         progress.advance(task)

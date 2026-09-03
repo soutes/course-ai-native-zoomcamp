@@ -123,7 +123,8 @@ def render_warnings(count: int) -> None:
 
 # --- weekly report (#16) ------------------------------------------------------------
 #
-# Everything below renders `manage.py report`'s four-section retro. `render_report_markdown`
+# Everything below renders `manage.py report`'s retro: four sections always, plus an
+# optional fifth "Goal check" section (#29, D28). `render_report_markdown`
 # is pure - plain data in, a markdown string out, no Rich, no Django, no LLM - so the
 # section/never-empty/exactly-one-focus-item rules are testable from fixtures with no
 # console involved. `render_report` is the only impure piece: it wraps that string in
@@ -169,6 +170,13 @@ class RepoReportData:
     """This repo's previous-week momentum (#21), or `None` when no
     `RepoWeek` row is stored for the previous week ("first week tracked").
     Read by `repoweek_lookup.previous_momentum_for_repo`, not computed here."""
+    goal: str = ""
+    """This project's stated goal (`Project.goal`), or `""` when unset (#29,
+    D28) - matches `Project.goal`'s own `blank=True`, so there is no `None`
+    vs `""` ambiguity to handle. `report.py` passes `project.goal` through at
+    the same call site that builds this row - no new query. Read by the
+    "Goal check" section below and by `portfolio.coach` for drift judgement;
+    never sent to the LLM for a repo where this is empty (D24/D28)."""
 
 
 @dataclass
@@ -434,15 +442,44 @@ def _focus_item_text(repos: list[RepoReportData], coaching: CoachingResult | Non
     return f"This week: **{repo}** - {advice}"
 
 
+def _goal_check_lines(repos: list[RepoReportData], coaching: CoachingResult | None) -> list[str]:
+    """One line per repo with a stated goal, commits this week, and a resolved
+    drift verdict (#29, D28).
+
+    A repo is skipped - contributes no line - when: `coaching is None`
+    (`--no-llm`, total LLM failure, or not attempted), `r.goal` is empty
+    (no goal set), `r.commits == 0` (silent this week - #14's job, not
+    drift's), or `r.repo` has no entry in `coaching.drift` (never sent for
+    drift judgement, or sent but resolved into `coaching.drift_unavailable`
+    instead). Each surviving line names the goal and the model's verdict
+    text, which is asked (in `coach.py`'s prompt) to cite a commit subject as
+    evidence.
+    """
+    if coaching is None:
+        return []
+    lines = []
+    for r in repos:
+        if not r.goal or r.commits == 0:
+            continue
+        verdict = coaching.drift.get(r.repo)
+        if verdict is None:
+            continue
+        lines.append(f"**{r.repo}** - goal: {r.goal} - {verdict}")
+    return lines
+
+
 def render_report_markdown(data: WeeklyReportData) -> str:
-    """The four-section retro as plain markdown text. Pure: no Rich, no Django,
-    no LLM, and works with `data.coaching is None` (always true today - see
+    """The retro as plain markdown text: four sections always, plus an optional
+    fifth "Goal check" section (#29, D28). Pure: no Rich, no Django, no LLM,
+    and works with `data.coaching is None` (the default - see
     `WeeklyReportData`).
 
     Every bullet carries a repo name and a number (#16's own AC - "no bare
     adjectives"). "What went wrong" is never empty and "This week's focus"
     is always exactly one line - see `_went_wrong_lines`/`_focus_item_text`.
     A week with no tracked repos at all still renders all four sections.
+    "Goal check" is entirely absent (no heading) when `_goal_check_lines`
+    has nothing to show - see its own docstring for exactly when that is.
     """
     repos = sorted(data.repos, key=lambda r: r.repo)
     new_repos = sorted(data.new_repos, key=lambda nr: nr.created_at)
@@ -484,6 +521,13 @@ def render_report_markdown(data: WeeklyReportData) -> str:
     lines.append("")
     lines.append(_focus_item_text(repos, data.coaching))
     lines.append("")
+
+    goal_lines = _goal_check_lines(repos, data.coaching)
+    if goal_lines:
+        lines.append("## Goal check")
+        lines.append("")
+        lines += [f"- {line}" for line in goal_lines]
+        lines.append("")
 
     return "\n".join(lines)
 
