@@ -1293,3 +1293,81 @@ docstring alongside the change; this is not a silent contract break, it is the o
 authorized to widen it.
 
 **Applies to:** [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14)
+
+---
+
+## D29 - #30's "shipped nothing" means zero commits in the window, sourced from stored `RepoWeek` history exactly like #14; it gets its own deterministic "Stale goals" section, separate from #29's LLM-driven "Goal check"
+
+**Question:** Neither `backlog.md` nor `SPEC.md` section 4b defines "shipped" for #30's own
+wording ("a goal unchanged for eight weeks with nothing shipped is flagged as fiction") - both
+just repeat the phrase without saying what data makes it true or false. Reading it as
+`Project.status == Status.SHIPPED` does not survive contact with the code: `Project.in_weekly_report`
+(confirmed by reading `portfolio/models.py`) already excludes `shipped`/`dropped` projects from
+the report loop entirely, and `render.py`'s `RepoReportData` rows (confirmed by reading `report.py`'s
+call site) are only ever built for `in_weekly_report` projects - so a project that shipped would
+never reach a staleness check in the first place, making "a project shipped in the window is never
+flagged" unreachable as written if "shipped" means the lifecycle status. Confirmed further:
+`lifecycle.py`'s own docstring says re-acking "never keeps a transition history" (D17) - there is
+no stored record of *when* a status transition happened inside an 8-week window to check
+retroactively, only the single most recent `status_changed_at`. The only per-week stored history
+in the system is `RepoWeek` (#13) - commits, active days, lines, files, one row per repo per ISO
+week - which is exactly what #14's `stalled_lookup.py` already reads to answer a structurally
+identical question ("has this repo been quiet for N weeks"), just with a different threshold (4
+weeks, `is_stalled`) and a different output (a bool + a number, not a fiction flag on a goal).
+
+Second, the issue leaves render placement open. #29/D28 already shipped a `## Goal check` section
+that is entirely LLM-driven - it is appended only when `data.coaching` is not `None`, and its own
+per-line skip rule excludes any repo with `commits == 0` (`_goal_check_lines`, confirmed by
+reading `render.py`: `if not r.goal or r.commits == 0: continue`). A goal stale enough to have
+shipped nothing for 8 straight weeks implies (via the reused `RepoWeek` reasoning above) most
+likely also zero commits in the reported week itself, which is precisely the case #29's section
+skips - so the two signals are naturally disjoint, not competing for the same line, but #30's
+check must still render with `data.coaching is None` (`--no-llm`, the AGENTS.md-mandated common
+case), which `## Goal check`'s entire section is gated against.
+
+**Decision:**
+1. **"Shipped nothing in the window" = zero commits summed across every stored `RepoWeek` row for
+   that repo whose `week` falls inside `[goal_set_at's week, reported_week]`.** This reuses #13's
+   already-stored history the same way #14's `stalled_lookup.py` does, needs no new fetch or
+   model field beyond what #10 (`goal_set_at`) already provides, and is the only reading under
+   which "a project shipped in the window is never flagged, however old the goal text is" is
+   reachable code, since a `Status.SHIPPED` project never reaches this check at all (excluded by
+   `in_weekly_report` upstream, same as `stalled_status`'s own shipped/dropped short-circuit).
+2. **New module, same split as #14:** `portfolio/services/goal_stale.py` holds a pure function
+   (`is_goal_stale(*, goal: str, goal_set_at, weeks_since_goal_set: int, commits_in_window: int,
+   status: str, paused_until, reference_date, threshold=STALE_GOAL_THRESHOLD_WEEKS) -> bool`, or
+   equivalent shape) with `STALE_GOAL_THRESHOLD_WEEKS = 8` as a named module constant, mirroring
+   `stalled.py`'s `STALLED_THRESHOLD_WEEKS` pattern exactly (no Django, no LLM, tested from plain
+   fixtures). A Django-aware `goal_stale_lookup.py` companion (mirroring `stalled_lookup.py`) sums
+   `RepoWeek.commits` for the window and reads `Project.goal_set_at`/`status`/`paused_until`,
+   the same layering split `stalled.py`/`stalled_lookup.py` already established.
+3. **Render: a new, separate `## Stale goals` section**, not folded into #29's `## Goal check`.
+   It is built from `RepoReportData` plus the new lookup, gated on nothing but the deterministic
+   check itself - present with `data.coaching is None` exactly as readily as with coaching
+   present, per AGENTS.md's unconditional `coaching = None` rule. It is absent (no heading) when
+   no tracked repo is flagged, same "no placeholder" convention #29/D28 already set for `## Goal
+   check`. Keeping it a distinct heading, rather than merging into `## Goal check`, avoids two
+   unrelated gating rules (one LLM-conditional, one purely deterministic) sharing one section and
+   avoids reopening #29/D28 (closed, shipped) to change `_goal_check_lines`' own skip logic.
+4. `RepoReportData` gains `goal_set_at: datetime | None = None` (mirrors #29/D28's `goal: str`
+   addition to the same dataclass) - `report.py`'s existing `RepoReportData(...)` call site passes
+   `goal_set_at=project.goal_set_at`, no new query.
+
+**Reason:** Point 1 is the only reading of "shipped nothing" that is both computable from data the
+app actually stores (no transition history exists to check "shipped inside this specific window"
+against `Status.SHIPPED`) and keeps the issue's own AC reachable rather than vacuously true for a
+population (shipped projects) that structurally never reaches the check. Point 2 keeps #30
+Django-free at its core exactly as AGENTS.md's determinism rule and #14's own precedent require,
+and reuses rather than reinvents the RepoWeek-window-sum pattern. Point 3 avoids silently changing
+#29/D28's shipped, tested gating logic and keeps a `--no-llm` run able to show stale-goal fiction,
+which folding into `## Goal check` would break outright (that section returns `[]` whenever
+`coaching is None`). Point 4 is the smallest plumbing change, following the exact precedent D28
+point 1 already set for `goal`.
+
+**Cost accepted:** A repo can in principle appear flagged as stalled (#14) and as a stale goal
+(#30) in the same report - both true statements about the same silence, from two sections. This is
+accepted: #14 measures "have you touched this repo," #30 measures "is the goal you wrote for it
+still credible," and the backlog treats them as separate signals on purpose (task 30 is filed
+distinctly from task 14, not as a variant of it).
+
+**Applies to:** [#30](https://github.com/soutes/course-ai-native-zoomcamp/issues/30), [#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13), [#10](https://github.com/soutes/course-ai-native-zoomcamp/issues/10)
