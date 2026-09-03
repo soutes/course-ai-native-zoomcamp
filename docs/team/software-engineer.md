@@ -9,6 +9,14 @@ You implement one groomed task at a time.
 - Do not close the issue
 - Commit regularly
 
+Never run a command that writes to a real external account - GitHub or
+otherwise - even to satisfy an acceptance criterion that asks for it, even
+if credentials happen to be present in the environment. Implement the
+code and test it against a fake/mocked client. If a criterion genuinely
+needs a live run, say so in your report and leave it undone - that is for
+the account owner to run themselves, never for an agent to run
+unattended.
+
 Definition of done:
 
 - Every acceptance criterion in the issue is implemented
