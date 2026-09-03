@@ -61,7 +61,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **13. Momentum stats.** ([#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13))
   Commits, active days, lines added and removed, files touched. Done when a `RepoWeek` row is
   produced per tracked repo.
-- [ ] **14. Stalled detection.** ([#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14))
+- [x] **14. Stalled detection.** ([#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14))
   Weeks since the last commit, per repo. Done when a repo silent for a month is flagged.
 - [ ] **15. Mid-flight work.** ([#15](https://github.com/soutes/course-ai-native-zoomcamp/issues/15))
   Unmerged branches and open PRs per repo. Done when both appear in the report data.
