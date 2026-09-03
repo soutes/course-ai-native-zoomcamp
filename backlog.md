@@ -74,7 +74,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **33. New repos this week.** ([#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33))
   A repo created during the reported week gets its own callout. Done when a week with a new
   repo says so, and a week without one shows nothing.
-- [ ] **36. Current-week dashboard page.** ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
+- [x] **36. Current-week dashboard page.** ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
   A landing page at `/` showing the current week, not only the project list. Done when the
   page renders from stored data with no network call.
 
@@ -149,7 +149,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **Tests run with `uv run pytest`.**
 - [x] **Linting with `uv run ruff check .` and `uv run ruff format .`.**
 - [x] **README documents setup, the token, and every command.**
-- [ ] **A dashboard page showing the current week, not only the project list.** - now task 36 ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
+- [x] **A dashboard page showing the current week, not only the project list.** - now task 36 ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
 - [x] **37. CI on GitHub Actions.** ([#37](https://github.com/soutes/course-ai-native-zoomcamp/issues/37))
   `uv run pytest` and `uv run ruff check .` on push and pull request. Done when main is green.
 - [x] **38. `seed_demo` management command.** ([#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38))
