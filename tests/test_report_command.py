@@ -21,7 +21,7 @@ WEEK = "2026-W35"  # Mon 2026-08-24 .. Sun 2026-08-30
 WINDOW = week_window(WEEK, tz=UTC_TZ)
 
 
-def make_gh_repo(full_name, *, created_at=None, default_branch="main") -> Repo:
+def make_gh_repo(full_name, *, created_at=None, default_branch="main", description=None) -> Repo:
     name = full_name.split("/", 1)[1]
     return Repo(
         name=name,
@@ -30,7 +30,7 @@ def make_gh_repo(full_name, *, created_at=None, default_branch="main") -> Repo:
         private=False,
         fork=False,
         archived=False,
-        description=None,
+        description=description,
         topics=[],
         license=None,
         default_branch=default_branch,
@@ -400,3 +400,31 @@ def test_pr_title_with_brackets_does_not_crash_or_get_swallowed(monkeypatch, set
 
     row = WeeklyReport.objects.get(week=WEEK)
     assert "[urgent] fix it" in row.markdown
+
+
+@pytest.mark.django_db
+def test_repo_description_and_commit_subject_with_brackets_are_rendered_and_not_swallowed(
+    monkeypatch, settings, tmp_path
+):
+    """The AC names two specific sources - a repo description and a commit
+    subject - not just PR titles. Both must actually appear in the rendered
+    report (fetched from the fake GitHub client, wired through
+    RepoReportData.description/commit_subjects), and a literal `[` in either
+    must survive Rich's Markdown-based terminal render and the persisted
+    markdown, end to end through the real command."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE)
+    fake_gh = FakeGitHub(
+        repos=[
+            make_gh_repo("me/demo", description="a repo with [brackets] in it"),
+        ],
+        commits={"me/demo": [make_commit("s1", day=1, subject="[urgent] fix bracket bug")]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)  # must not raise
+
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "a repo with [brackets] in it" in row.markdown
+    assert "[urgent] fix bracket bug" in row.markdown

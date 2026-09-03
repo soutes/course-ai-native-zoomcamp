@@ -113,6 +113,9 @@ class Command(BaseCommand):
 
                         commits = gh.commits_in_window(full_name, window, emails)
                         commit_counts[full_name] = len(commits)
+                        commit_subjects = [
+                            c.subject for c in sorted(commits, key=lambda c: c.authored_at)
+                        ]
 
                         stats = compute_repo_week(
                             commits,
@@ -141,6 +144,8 @@ class Command(BaseCommand):
                                 stalled=stalled.stalled,
                                 unmerged_branches=branches,
                                 open_pull_requests=prs,
+                                description=repo.description if repo else None,
+                                commit_subjects=commit_subjects,
                             )
                         )
                         progress.advance(task)

@@ -126,7 +126,11 @@ class RepoReportData:
 
     ``commits``/``active_days``/``lines_added``/``lines_removed``/``files_touched``/``partial``
     mirror `momentum.RepoWeekStats` for this repo and week. ``weeks_since_last_commit``/
-    ``stalled`` mirror `stalled.StalledStatus` (#14).
+    ``stalled`` mirror `stalled.StalledStatus` (#14). ``description`` is the repo's GitHub
+    description (``Repo.description``, may be `None`); ``commit_subjects`` are this week's
+    commit subjects (``Commit.subject``), in chronological order - both rendered so the
+    "renders literally, does not swallow text" AC is exercised against real content, not
+    only PR titles.
     """
 
     repo: str
@@ -140,6 +144,8 @@ class RepoReportData:
     stalled: bool
     unmerged_branches: list[UnmergedBranch] = field(default_factory=list)
     open_pull_requests: list[OpenPullRequest] = field(default_factory=list)
+    description: str | None = None
+    commit_subjects: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -171,11 +177,13 @@ def _went_well_lines(repos: list[RepoReportData]) -> list[str]:
     lines = []
     for r in moved:
         undercount = " (diffstat capped at 80/week - lines/files undercounted)" if r.partial else ""
+        desc = f" - {r.description}" if r.description else ""
+        latest = f'; latest commit: "{r.commit_subjects[-1]}"' if r.commit_subjects else ""
         lines.append(
-            f"**{r.repo}** - {r.commits} commit{_s(r.commits)}, "
+            f"**{r.repo}**{desc} - {r.commits} commit{_s(r.commits)}, "
             f"{r.active_days} active day{_s(r.active_days)}, "
             f"+{r.lines_added}/-{r.lines_removed} lines across "
-            f"{r.files_touched} file{_s(r.files_touched)}{undercount}"
+            f"{r.files_touched} file{_s(r.files_touched)}{undercount}{latest}"
         )
     return lines
 
@@ -188,22 +196,24 @@ def _went_wrong_lines(repos: list[RepoReportData]) -> list[str]:
         # looks fine: the failure is spread, not concentrated in one silent repo.
         total = sum(r.commits for r in repos)
         weakest = min(repos, key=lambda r: (r.commits, r.repo))
+        weakest_desc = f" - {weakest.description}" if weakest.description else ""
         return [
             f"Nothing stalled - every one of the {len(repos)} tracked repos had a commit "
-            f"this week, but it was spread thin: **{weakest.repo}** carried only "
+            f"this week, but it was spread thin: **{weakest.repo}**{weakest_desc} carried only "
             f"{weakest.commits} commit{_s(weakest.commits)} of {total} across the portfolio."
         ]
     lines = []
     for r in silent:
         if r.weeks_since_last_commit is None:
-            since = "no commit on record"
+            since = "0 commits on record"
         else:
             since = (
                 f"{r.weeks_since_last_commit} week{_s(r.weeks_since_last_commit)} "
                 "since its last commit"
             )
         tag = " - stalled" if r.stalled else ""
-        lines.append(f"**{r.repo}** - 0 commits this week, {since}{tag}")
+        desc = f" - {r.description}" if r.description else ""
+        lines.append(f"**{r.repo}**{desc} - 0 commits this week, {since}{tag}")
     return lines
 
 
@@ -260,8 +270,7 @@ def _focus_item_text(repos: list[RepoReportData]) -> str:
         worst = min(silent, key=rank)
         if worst.weeks_since_last_commit is None:
             return (
-                f"Make the first commit to **{worst.repo}** this week - "
-                "it has no commit on record yet."
+                f"Make the first commit to **{worst.repo}** this week - it has 0 commits on record."
             )
         return (
             f"Get **{worst.repo}** committing again this week - it has been "

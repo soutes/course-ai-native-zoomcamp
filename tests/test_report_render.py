@@ -171,12 +171,15 @@ def test_focus_falls_back_to_weakest_repo_when_everything_is_fine():
 
 
 def test_focus_handles_never_committed_repo():
+    """Even the never-committed branch of the focus item is a "claim" (#16's
+    own AC) - it must carry a repo name AND a number, not just prose."""
     repo = make_repo(repo="me/ghost", commits=0, weeks_since_last_commit=None, stalled=True)
     md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
     focus_section = md.split("## This week's focus")[1]
 
     assert "me/ghost" in focus_section
-    assert "never" in focus_section.lower() or "no commit on record" in focus_section.lower()
+    assert any(ch.isdigit() for ch in focus_section)
+    assert "0 commit" in focus_section
 
 
 # --- a week where nothing at all happened still renders all four sections ----------
@@ -219,6 +222,41 @@ def test_pr_title_with_brackets_survives_in_the_markdown():
     md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
 
     assert "[WIP] add feature" in md
+
+
+def test_repo_description_with_brackets_renders_literally_in_went_well():
+    repo = make_repo(
+        repo="me/alpha", commits=5, description="a repo with [brackets] in its description"
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+    assert "a repo with [brackets] in its description" in well_section
+
+
+def test_repo_description_with_brackets_renders_literally_in_went_wrong():
+    repo = make_repo(
+        repo="me/quiet",
+        commits=0,
+        weeks_since_last_commit=3,
+        description="tracks [issue-42] work",
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "tracks [issue-42] work" in wrong_section
+
+
+def test_commit_subject_with_brackets_renders_literally_and_is_the_latest_one():
+    repo = make_repo(
+        repo="me/alpha",
+        commits=2,
+        commit_subjects=["first pass", "[urgent] fix bracket bug"],
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+    assert "[urgent] fix bracket bug" in well_section
 
 
 # --- new repos appear under "What I'm doing" ---------------------------------------
