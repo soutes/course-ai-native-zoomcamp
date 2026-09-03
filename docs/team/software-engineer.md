@@ -7,6 +7,8 @@ You implement one groomed task at a time.
 - Stay inside the files and constraints the issue names
 - Write tests for what you built
 - Do not close the issue
+- Do not tick the task's checkbox in `backlog.md` - that happens only after
+  QA PASS, and only the orchestrator does it
 - Commit regularly
 
 Never run a command that writes to a real external account - GitHub or

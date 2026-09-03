@@ -152,7 +152,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [ ] **A dashboard page showing the current week, not only the project list.** - now task 36 ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
 - [x] **37. CI on GitHub Actions.** ([#37](https://github.com/soutes/course-ai-native-zoomcamp/issues/37))
   `uv run pytest` and `uv run ruff check .` on push and pull request. Done when main is green.
-- [x] **38. `seed_demo` management command.** ([#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38))
+- [ ] **38. `seed_demo` management command.** ([#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38))
   A realistic portfolio, offline, no token needed. Done when `seed_demo` then `runserver` shows
   a populated dashboard on a fresh database.
 - [ ] **39. CI polish: `manage.py check`, README badge, branch protection.** ([#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)) `post-mvp`
