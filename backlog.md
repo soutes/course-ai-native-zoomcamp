@@ -68,7 +68,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **16. `report` management command.** ([#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16))
   Render the four retro sections as markdown on stdout. Done when every claim carries a repo
   name and a number.
-- [ ] **17. Retro web page.** ([#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17))
+- [x] **17. Retro web page.** ([#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17))
   A Django view and template for one week's retro, with a list of past weeks. Done when the
   same report readable in the terminal is readable at `/retro/2026-W36/`.
 - [x] **33. New repos this week.** ([#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33))
