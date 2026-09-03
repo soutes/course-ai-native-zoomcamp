@@ -61,7 +61,12 @@ than silently wrong.
 
 ## D3 - Branch comparison bound per repo
 
-**Question:** Issue #15 requires bounding per-repo branch comparisons ("a
+**Amended by [D8](#d8---d3-amended-the-branch-bound-cannot-be-most-recently-pushed-without-defeating-itself):** "most-recently-pushed" turned out to be
+unachievable without costing more requests than this decision exists to
+save. The bound survives; the ordering does not. Read D8 for the current
+rule.
+
+**Question (original):** Issue #15 requires bounding per-repo branch comparisons ("a
 repo with 40 stale branches must not spend 40 requests every run"), but no
 number is fixed anywhere.
 
@@ -159,6 +164,48 @@ Asked explicitly during this run whether this should become a permanent product 
 **Cost accepted:** Issue #7's backlog checkbox and issue close reflect "code correct and tested," not "verified running end-to-end" in the strict sense `AGENTS.md` Working normally requires. That gap is intentional and owner-acknowledged, not an oversight.
 
 **Applies to:** [#7](https://github.com/soutes/course-ai-native-zoomcamp/issues/7)
+
+---
+
+## D8 - D3 amended: the branch bound cannot be "most recently pushed" without defeating itself
+
+**Question:** Implementing #15 against D3 exposed that D3's exact wording -
+sort branches by last-push date, take the top 20 - is not cheaply
+achievable. `GET /repos/{owner}/{repo}/branches` (confirmed against GitHub's
+REST docs) returns only branch name and head SHA, no date. Getting a real
+recency signal costs one additional request per branch (`GET
+.../commits/{sha}`). For D3's own example - a repo with 40 branches - that
+is **40 requests just to sort them**, before the 20 `compare` calls that
+follow. The "amended" version the engineer built to honor D3's letter
+(fetch every branch's date, then take the top 20) costs *more* total
+requests (40 + 20 = 60) than the naive approach D3 exists to prevent
+(40 straight `compare` calls) - it satisfies "most recently pushed" while
+failing the actual goal, which was request cost.
+
+**Decision:** Drop the recency-ordering requirement. Bound per repo per run
+is: one paginated fetch of `GET /repos/{owner}/{repo}/branches` (`per_page`
+capped, at most 2 pages - 200 branches - scanned), then `compare` at most
+the **first 20 non-default branches in whatever order the API returns
+them** (empirically close to creation order, not push recency, but no REST
+call reveals push recency without a per-branch request). Total worst-case
+requests per repo: ~2 (branch list) + 20 (compare) = ~22, regardless of how
+many branches the repo has - the actual property D3 was for.
+
+**Reason:** A "most recently pushed" ordering was a reasonable-sounding
+default when D3 was written during grooming, without checking what the
+branches endpoint actually returns. The real constraint (GitHub REST has no
+bulk branch-recency endpoint) only surfaced once someone tried to implement
+it. Bounding request cost is the property that matters; which 20 branches
+get shown when a repo has more than 20 is a secondary concern.
+
+**Cost accepted:** On a repo with more than 20 non-default branches, which
+20 appear as "mid-flight work" is no longer guaranteed to be the most
+recently active ones - it is whichever 20 the branches API lists first for
+that repo. Acceptable: a repo with over 20 branches actively ahead of
+default is already an outlier this tool is not tuned for, and the
+alternative (spending 40+ requests to sort them) is worse.
+
+**Applies to:** [#15](https://github.com/soutes/course-ai-native-zoomcamp/issues/15)
 
 ---
 
