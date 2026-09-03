@@ -1,8 +1,9 @@
 """GitHub REST client. The only module that touches the network.
 
-Deliberately small: list my repos, count commits, check for a README and a release.
-Commit counting uses the `Link: rel="last"` header trick so one request per repo is
-enough instead of paginating through every commit.
+Deliberately small: list my repos, count commits, check for a README and a release,
+and (#15) find mid-flight work - unmerged branches and open PRs. Commit counting uses
+the `Link: rel="last"` header trick so one request per repo is enough instead of
+paginating through every commit.
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ from typing import Any
 import httpx
 
 from .cache import Cache
-from .types import Commit, CommitStat, Repo
+from .types import Commit, CommitStat, OpenPullRequest, Repo, UnmergedBranch
 
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
+BRANCH_COMPARE_CAP = 20  # docs/decisions.md D3
 
 
 class GitHubError(RuntimeError):
@@ -266,6 +268,110 @@ class GitHub:
         found = r.status_code == 200 and bool(r.json())
         self.cache.set(key, found)
         return found
+
+    # --- mid-flight work (#15) ------------------------------------------------
+
+    def branches(self, full_name: str) -> list[dict[str, Any]]:
+        """Every branch in the repo, paginated and cached like `my_repos`.
+
+        GitHub's response here is name + head `commit.sha` only - no push
+        date - so it cannot alone answer "most recently pushed". See
+        `unmerged_branches` for how the D3 bound is applied on top of this.
+        """
+        result: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            batch = self._cached_json(f"/repos/{full_name}/branches", per_page=100, page=page)
+            if not batch:
+                return result
+            result.extend(batch)
+            if len(batch) < 100:
+                return result
+            page += 1
+
+    def _commit_date(self, full_name: str, sha: str) -> datetime:
+        """A commit's authored date, via the same cached `/commits/{sha}`
+        endpoint `commit_diffstat` uses - a branch head that #13 already
+        looked up this run costs nothing extra here."""
+        data = self._cached_json(f"/repos/{full_name}/commits/{sha}")
+        commit = data.get("commit") or {}
+        author = commit.get("author") or {}
+        date_str = author.get("date") or (commit.get("committer") or {}).get("date")
+        if not date_str:
+            return datetime.fromtimestamp(0, tz=UTC)
+        return _parse_dt(date_str)
+
+    def unmerged_branches(self, full_name: str, default_branch: str) -> list[UnmergedBranch]:
+        """Branches ahead of default and not merged into it - mid-flight work (#15).
+
+        The default branch itself is never included. A branch behind but not
+        ahead of default (``ahead_by == 0``) is stale, not mid-flight, and is
+        excluded - this also drops a branch identical to default.
+
+        Bounded per D3: GitHub's branches list carries no per-branch push
+        date, so recency is read from each branch's head commit via
+        `_commit_date` - one lightweight, cached request per branch, far
+        cheaper than a `compare` call. Branches are sorted by that date and
+        only the 20 most-recently-committed non-default ones (D3) go on to a
+        `compare` call at all; the request bound this protects is the heavier
+        `compare` request, not the branch listing or the date lookups.
+        """
+        raw = self.branches(full_name)
+        candidates: list[tuple[str, str, datetime]] = []
+        for b in raw:
+            name = b["name"]
+            if name == default_branch:
+                continue
+            sha = (b.get("commit") or {}).get("sha")
+            if not sha:
+                continue
+            candidates.append((name, sha, self._commit_date(full_name, sha)))
+
+        candidates.sort(key=lambda c: c[2], reverse=True)
+        top = candidates[:BRANCH_COMPARE_CAP]
+
+        unmerged: list[UnmergedBranch] = []
+        for name, _sha, last_commit_at in top:
+            compare = self._cached_json(f"/repos/{full_name}/compare/{default_branch}...{name}")
+            ahead_by = compare.get("ahead_by", 0)
+            if ahead_by == 0:
+                continue  # behind-or-identical: stale, not mid-flight
+            unmerged.append(
+                UnmergedBranch(name=name, ahead_by=ahead_by, last_commit_at=last_commit_at)
+            )
+        return unmerged
+
+    def open_pull_requests(self, full_name: str, github_user: str) -> list[OpenPullRequest]:
+        """Open PRs I opened in this repo - mid-flight work (#15).
+
+        PRs opened by someone else in a repo I own are excluded:
+        `pull.user.login` is matched against `github_user` case-insensitively.
+        Draft PRs are included and carry their `draft` flag.
+        """
+        wanted = github_user.strip().lower()
+        result: list[OpenPullRequest] = []
+        page = 1
+        while True:
+            batch = self._cached_json(
+                f"/repos/{full_name}/pulls", state="open", per_page=100, page=page
+            )
+            if not batch:
+                return result
+            for raw in batch:
+                login = ((raw.get("user") or {}).get("login") or "").strip().lower()
+                if wanted and login != wanted:
+                    continue
+                result.append(
+                    OpenPullRequest(
+                        number=raw["number"],
+                        title=raw["title"],
+                        created_at=_parse_dt(raw["created_at"]),
+                        draft=bool(raw.get("draft", False)),
+                    )
+                )
+            if len(batch) < 100:
+                return result
+            page += 1
 
     # --- the only write this app ever performs -------------------------------
 

@@ -92,6 +92,42 @@ class CommitStat:
 
 
 @dataclass
+class UnmergedBranch:
+    """A non-default branch ahead of the default branch and not merged into it -
+    mid-flight work (#15). Sourced from GitHub's `compare` endpoint
+    (base=default, head=branch): ``ahead_by`` is its `ahead_by`, and
+    ``last_commit_at`` is the branch head commit's date. A branch behind but
+    not ahead of default is stale, not mid-flight, and never becomes one of
+    these - see `GitHub.unmerged_branches`.
+    """
+
+    name: str
+    ahead_by: int
+    last_commit_at: datetime
+
+    @property
+    def age_days(self) -> int:
+        return (datetime.now(tz=self.last_commit_at.tzinfo) - self.last_commit_at).days
+
+
+@dataclass
+class OpenPullRequest:
+    """One open pull request I opened - mid-flight work (#15). PRs opened by
+    someone else in a repo I own are excluded before this type is ever built -
+    see `GitHub.open_pull_requests`.
+    """
+
+    number: int
+    title: str
+    created_at: datetime
+    draft: bool
+
+    @property
+    def age_days(self) -> int:
+        return (datetime.now(tz=self.created_at.tzinfo) - self.created_at).days
+
+
+@dataclass
 class Decision:
     """Triage's call on one repo, with the reasons that produced it."""
 
