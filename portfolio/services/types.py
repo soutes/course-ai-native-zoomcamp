@@ -128,6 +128,20 @@ class OpenPullRequest:
 
 
 @dataclass
+class NewRepo:
+    """One repo created during the reported week - a start, not a finish (#33).
+
+    A callout, not an achievement: it shows up regardless of how strong the
+    repo's first week was, and regardless of whether the repo is a tracked
+    project - see `new_repos.new_repos_this_week`.
+    """
+
+    name: str
+    created_at: datetime
+    commits: int
+
+
+@dataclass
 class Decision:
     """Triage's call on one repo, with the reasons that produced it."""
 
