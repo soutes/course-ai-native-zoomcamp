@@ -699,3 +699,61 @@ the `stalled_lookup.py` precedent mid-implementation.
 that #21 was always going to need; no scope changes.
 
 **Applies to:** [#21](https://github.com/soutes/course-ai-native-zoomcamp/issues/21), [#11](https://github.com/soutes/course-ai-native-zoomcamp/issues/11)
+
+---
+
+## D20 - #22's "which days were active" reads as a rhythm category from the existing count, not a literal day list
+
+**Question:** #22's filed body asks each repo-week to report "which **days** were
+active, not only how many commits happened," and to compute "day-of-week... in local
+time, so a late-night Sunday commit is not counted as Monday." Read literally, that
+implies rendering actual calendar dates or weekday names (`Mon, Wed, Fri`) per repo.
+But #13's `compute_repo_week` (`portfolio/services/momentum.py`) builds the set of
+distinct local-calendar days internally only to take its `len()` -
+`RepoWeekStats.active_days`, the `RepoWeek.active_days` column, and
+`RepoReportData.active_days` all persist and pass along a **count**, never the dates
+themselves. Nothing downstream of #13 has the actual day list to render, and #22's own
+Constraints say to read "the active-day data already produced by #13; do not re-fetch
+commits" and to stay inside `portfolio/services/` with no new fetch - which rules out
+re-deriving the date set from raw commits at render time, and D5 already requires the
+web pages (and by the same logic, anything `render.py` produces) to work from stored
+data with no recomputation from GitHub. Adding a stored day-list would mean a new
+`RepoWeek` field and migration, which neither `backlog.md`'s one-line description ("the
+spread of active days... outrank raw totals") nor `SPEC.md` section 6 (which only ever
+shows the pattern as "18 commits, 5 active days," never named weekdays) asks for.
+
+**Decision:** "Which days were active" is satisfied by a **rhythm category** derived
+from the two counts #13 already stores - `commits` and `active_days` - not by listing
+specific calendar dates or weekday names anywhere in the report:
+- `active_days == 1` (and `commits > 0`) -> **burst** wording, e.g. "all on one day"
+- `active_days >= 5` -> **habit** wording, e.g. "spread across N days - a habit"
+- `active_days` between 2 and 4 -> a neutral **spread** wording that names the count
+  ("spread across N days") without applying either the "burst" or "habit" label - the
+  literal middle-ground AC ("two and three active days are not artificially forced
+  into different labels")
+- `commits == 0` -> no rhythm wording at all (these repos already render through
+  `_went_wrong_lines`, not `_went_well_lines`, so this falls out of the existing split
+  rather than needing a new check)
+
+The AC bullet about local time is already satisfied by #13's existing
+`active_days = {c.authored_at.astimezone(tz).date() for c in commits}`
+(`momentum.py`) - #22 adds no new day-of-week computation, it only reads the count that
+computation already produces correctly. No new model field, no migration, no re-fetch:
+the categorization is a pure function of `RepoReportData.commits`/`.active_days`
+(already on every row `render.py` builds).
+
+**Reason:** The literal reading (render actual dates/weekday names) is not buildable
+from data #13 stores today without a schema change #22's own Constraints forbid
+("reads the data already produced by #13; do not re-fetch commits"). The property the
+issue's acceptance test actually checks - "a one-day burst and a five-day habit with
+equal commit counts read differently" - only requires the count and the category label,
+not the literal dates. `SPEC.md`'s own worked example ("5 active days," not "Mon Tue Wed
+Thu Fri") backs this reading.
+
+**Cost accepted:** The rendered prose never names which specific days (Monday,
+Tuesday, ...) had a commit, only how many distinct days and which rhythm bucket that
+falls into. If a future issue wants literal weekday names, it will need to extend
+`RepoWeekStats`/`RepoWeek` with a stored day-list (or day-of-week bitmask) and a
+migration - not scoped here.
+
+**Applies to:** [#22](https://github.com/soutes/course-ai-native-zoomcamp/issues/22), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13)
