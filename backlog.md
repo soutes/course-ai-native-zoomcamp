@@ -58,7 +58,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **12. Fetch a week of commits per repo.** ([#12](https://github.com/soutes/course-ai-native-zoomcamp/issues/12))
   Filtered by my authorship emails so shared repos count only my work. Done when the count
   matches what GitHub's own UI reports for the same week.
-- [ ] **13. Momentum stats.** ([#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13))
+- [x] **13. Momentum stats.** ([#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13))
   Commits, active days, lines added and removed, files touched. Done when a `RepoWeek` row is
   produced per tracked repo.
 - [ ] **14. Stalled detection.** ([#14](https://github.com/soutes/course-ai-native-zoomcamp/issues/14))
