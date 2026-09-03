@@ -363,3 +363,72 @@ need a second, harder-to-diagnose grooming pass once the first attempt
 mysteriously didn't render.
 
 **Applies to:** [#41](https://github.com/soutes/course-ai-native-zoomcamp/issues/41)
+
+---
+
+## D12 - #43 builds the shared project-grouping helper; #34 becomes its second caller
+
+**Question:** #43's own filed body suggests its shape as "a `/projects/`
+page mirroring what #34 (`projects` management command, terminal) shows,
+reusing the same query/shaping so the CLI and the page cannot drift apart."
+But #34 is still open and unimplemented - there is no existing
+query/shaping to reuse. Grooming #43 to depend on #34 landing first would
+block a `post-mvp` issue on another `post-mvp` issue with no forcing
+function to build either.
+
+**Decision:** #43 builds the grouping/shaping logic itself, as a function
+in `portfolio/services/` (e.g. `portfolio/services/projects.py`) - grouping
+`Project` rows by status, with counts, following `AGENTS.md`'s layering
+rule (no Django, no LLM, rules not delivery). The `/projects/` view is thin
+wiring over that helper. When #34 is picked up, it becomes the helper's
+second caller instead of inventing its own grouping logic - same pattern as
+D4 (#36 built `abandoned_count`, #23 became its second caller).
+
+**Reason:** The property that matters - CLI and page not drifting apart -
+only requires that whichever issue lands *first* builds the shared helper
+and whichever lands *second* reuses it. Nothing about #43 requires #34 to
+exist first; blocking on it would stall #43 for no functional reason.
+
+**Cost accepted:** None beyond ordinary shared-helper design, provided #34,
+when implemented, is written against #43's helper rather than duplicating
+the grouping/formatting rules inline.
+
+**Applies to:** [#43](https://github.com/soutes/course-ai-native-zoomcamp/issues/43), [#34](https://github.com/soutes/course-ai-native-zoomcamp/issues/34)
+
+---
+
+## D13 - The public `/projects/` page never shows free-text reasons or which repos triage made private
+
+**Question:** #43's underlying models carry free text not written for a
+public audience: `Project.status_reason` (why a project was paused/shipped/
+dropped) and `TriageDecision.reason` (why one specific repo was made
+private), plus `TriageDecision.repo` itself (which repo triage acted on).
+The pre-#36 dashboard (restored in git history at `4ccc577^`) already showed
+`status_reason` for ended projects, and the "candidate shape" language in
+#43's filed body says "triage history" without qualifying what part of it.
+Read literally, "triage history" could mean rendering `TriageDecision` rows
+one by one - repo name, reason, timestamp - to a page with no login.
+
+**Decision:** The public page shows, for triage history, only what the
+pre-#36 dashboard already showed at the aggregate level: each `TriageRun`'s
+date and the count of repos it made private. It does not list which repos
+were affected and does not render `TriageDecision.reason`. For `Project`,
+the page shows `status_reason` for ended/paused projects (as the pre-#36
+dashboard did) - this field is about the project's own trajectory, written
+by the same person choosing to expose the project publicly in the first
+place, and was already public prior to #36. `TriageDecision.reason` is
+different in kind: it is commentary about a repo the owner deliberately
+chose to hide from the public, so publishing the reason (or which repo)
+defeats the purpose of having hidden it.
+
+**Reason:** Naming a privated repo, or publishing why it was hidden,
+on a public page directly contradicts the reason triage exists - AGENTS.md
+already treats `triage`'s single write (`private: true`) as sensitive
+enough to require a warn-and-confirm flow before it happens; showing the
+result's details publicly afterward undermines that same intent.
+
+**Cost accepted:** The public page is less detailed about triage than the
+admin view (`/admin/`, login required) or the terminal `triage` command -
+by design. Anyone wanting per-repo triage detail still has the admin.
+
+**Applies to:** [#43](https://github.com/soutes/course-ai-native-zoomcamp/issues/43)
