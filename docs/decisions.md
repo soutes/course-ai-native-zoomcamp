@@ -927,3 +927,101 @@ this only removes an AC that could not have been implemented as filed without co
 `docs/privacy.md` or #25's own "fetches nothing new" rule.
 
 **Applies to:** [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29)
+
+---
+
+## D25 - #26 owns invoking `send_batched_request`, the exact per-repo JSON shape, and the new `CoachingResult` type; per-repo "visible" degradation is a data guarantee, not a render change
+
+**Question:** #26's filed body left three things unstated that an engineer could not proceed
+without guessing. First, whether #26 calls `coach.send_batched_request` itself or only receives
+an already-obtained raw response to parse - #25's own "Out of scope" says wiring the call into
+`report`'s command flow "lands with #26/#27/#28," without saying which one actually makes the
+call. Second, "parsed as JSON with a known shape, keyed by repo" names no concrete schema -
+object of objects, object of strings, a wrapper key, all read equally as "keyed by repo."
+Third, `WeeklyReportData.coaching` (`portfolio/services/render.py`) is typed `str | None` today,
+but #26's own ACs require *simultaneously* tracking which repos got usable advice and which
+didn't ("a missing key for one repo leaves that repo without coaching and every other repo
+intact") - a single string cannot carry that distinction, and #26's Constraints forbid putting
+parsing logic in `render` ("All parsing lives in the LLM module, not in `render`"), so the shape
+handed to `render` has to already be resolved before it gets there. Separately, `SPEC.md`
+section 4b/8b's original vision ("section prose comes from the batched LLM call") is superseded
+by the shipped architecture: `render_report_markdown`'s three narrative sections
+(`_went_well_lines`/`_went_wrong_lines`/`_doing_lines`) are already fully deterministic prose
+with no LLM hook, and only "This week's focus" (#28, not yet built) is documented anywhere in
+`backlog.md`/`SPEC.md`'s own table (`SPEC.md` line 62: "This week's focus | coaching + goal
+drift") as coaching-fed - so per-repo advice text has exactly one filed consumer (#28's focus
+item), not a place in the three deterministic sections.
+
+**Decision:**
+1. `portfolio/coach.py` (not `render.py`) gains one entry point, e.g.
+   `get_coaching(report: WeeklyReportData, client: CoachClient) -> CoachingResult | None`, that
+   itself calls `send_batched_request(client, report)`, catches `CoachRequestError` (and any
+   other exception `chat_completion` can raise) as a **total failure**, and then parses the raw
+   response. #26 is the first and only issue that actually invokes `send_batched_request` for a
+   real report; `report.py`'s command wiring (built alongside #26/#27) calls `get_coaching` once,
+   inside a `try/except` that also catches `CoachConfigError` from `build_client` - any exception
+   anywhere on this path resolves to `coaching = None`, never a raised error reaching `report`'s
+   own flow (per #26's own Constraint, "never raise out of the coaching path into the report
+   path").
+2. **Schema:** the model is asked for, and #26 parses, a **flat JSON object keyed by repo name**,
+   values are plain advice strings - `{"repo-name": "advice text", ...}`. No nesting, no wrapper
+   key. Repo names are matched exactly against `RepoReportData.repo` for the repos actually sent
+   in the prompt (`report.repos`).
+3. **New type**, defined in `portfolio/coach.py` (not `render.py`, keeping parsing logic in the
+   LLM module per #26's own Constraint):
+   ```python
+   @dataclass
+   class CoachingResult:
+       advice: dict[str, str]       # repo name -> capped, non-empty advice text
+       unavailable: list[str]       # repos sent, but with no usable advice
+   ```
+   `WeeklyReportData.coaching`'s type changes from `str | None` to `CoachingResult | None`.
+   `coaching = None` means **total failure or not attempted** (unparseable JSON, wrong top-level
+   JSON type, a response with no `choices[0].message.content`, a request-level exception, or
+   `--no-llm`/no key at all, #27's job) - `render` already works with `coaching = None`
+   unconditionally (`AGENTS.md`), and this is what makes "unparseable JSON overall leaves the
+   whole report deterministic, exactly as if `--no-llm` had been passed" literally true: the two
+   paths produce the identical `coaching = None` state, not merely similar-looking output.
+   `coaching = CoachingResult(...)` means the JSON parsed as a valid keyed object, with each sent
+   repo landing in exactly one of `advice` or `unavailable` - never silently absent from both.
+4. **Parsing rules** (all in `coach.py`): read `response["choices"][0]["message"]["content"]`
+   (missing/wrong shape -> total failure); strip a single leading/trailing markdown code fence
+   (`` ```json `` or `` ``` ``) if present before parsing; `json.loads` (failure -> total
+   failure); reject a parsed value that is not a JSON object (total failure - this is "unparseable
+   JSON overall" even though `json.loads` itself succeeded, e.g. a bare JSON array or string).
+   For each key in a successfully-parsed object: a key not matching a sent repo name is dropped,
+   not rendered (per #26's own AC); a key matching a sent repo whose value is not a non-empty
+   string goes to `unavailable`; otherwise the value is stripped and truncated to a new named
+   constant `MAX_ADVICE_CHARS = 500` (with a trailing marker on truncation) and stored in
+   `advice`. A sent repo whose name never appears as a key in the parsed object also lands in
+   `unavailable` - the same outcome as an invalid value, so "missing key" and "malformed value"
+   degrade identically.
+5. **What "every degradation is visible" means for #26 specifically:** #26 guarantees the *data*
+   never silently loses a repo (point 3 above - every sent repo is accounted for in `advice` or
+   `unavailable`) and that the whole-report failure path is byte-for-byte the same `coaching =
+   None` state `--no-llm` already produces and is already required to render sensibly (#27's AC).
+   #26 does **not** itself add a "coaching unavailable" line to `render_report_markdown` - no
+   section of the shipped report renders per-repo advice text or a per-repo unavailability notice
+   today (the three narrative sections are deterministic and un-hooked, per the Question above),
+   and the only filed consumer of `CoachingResult.advice` is #28's single focus item, which
+   already carries its own "states plainly that focus needs the LLM" AC for the case it has
+   nothing usable to choose from. If a future issue wants per-repo advice or unavailability text
+   woven into "What went well"/"What went wrong"/"What I'm doing", it is scoped there, against
+   `CoachingResult` as the data source - not invented inside #26.
+
+**Reason:** Each of these was a real fork in how #26 gets implemented, not a stylistic choice -
+guessing wrong on point 1 means `report.py`'s wiring is built twice (once in #26, redone in
+#27); guessing wrong on point 2 means #26's own tests target a schema #25's prompt was never
+asked to produce; guessing wrong on point 3 means either #26 is unimplementable as filed (a
+`str` cannot carry per-repo pass/fail) or an engineer quietly invents a wider change to
+`render.py` that its own Constraints forbid. Point 5 keeps #26 from silently absorbing UI work
+(weaving advice text into the three deterministic sections) that no filed issue actually asks
+for and that would contradict the shipped, deterministic-prose architecture the Question section
+documents.
+
+**Cost accepted:** `CoachingResult.unavailable` is tracked but has no rendered UI anywhere yet -
+a repo whose advice degraded is only "visible" in the sense that the data says so and a test can
+assert it, not in the sense that a reader of the report sees a note about that specific repo.
+Closing that gap, if ever wanted, is new scope for a future issue, not a defect in #26.
+
+**Applies to:** [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27), [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28)
