@@ -159,3 +159,47 @@ Asked explicitly during this run whether this should become a permanent product 
 **Cost accepted:** Issue #7's backlog checkbox and issue close reflect "code correct and tested," not "verified running end-to-end" in the strict sense `AGENTS.md` Working normally requires. That gap is intentional and owner-acknowledged, not an oversight.
 
 **Applies to:** [#7](https://github.com/soutes/course-ai-native-zoomcamp/issues/7)
+
+---
+
+## D7 - `seed_demo` seeds only the models that exist today
+
+**Question:** Gate 4 describes `seed_demo` as creating "a realistic portfolio with
+several projects, a mix of active and stalled" and its exit condition as
+`manage.py seed_demo` followed by `manage.py runserver` showing "a populated
+dashboard." Read literally against the current backlog, "stalled" and
+"dashboard" both suggest the richer, current-week picture: `RepoWeek` (#13),
+`WeeklyReport` (#16, the model D5 introduces to back the web pages), and the
+current-week dashboard (#36) - none of which exist yet as of Gate 4. All
+three are still open Gate 5 issues, and Gate 4 runs before Gate 5.
+
+**Decision:** `seed_demo` (#38) seeds only `Project`, `TriageRun` and
+`TriageDecision` - the three models that exist today. "Active and stalled"
+is read as a spread of `Project.status` values (active/paused/shipped/
+dropped) plus old vs. recent `status_changed_at`/`goal_set_at` timestamps,
+not a `stalled` flag (which lives on `RepoWeek`, not built). "A populated
+dashboard" is read against the dashboard that already exists at `/`
+(`portfolio/views.py:dashboard`, `portfolio/templates/portfolio/
+dashboard.html`, present since the initial commit) - it renders exactly
+`Project` and `TriageRun`/`TriageDecision` data and nothing else, so it is
+fully satisfiable today. It is not the enriched current-week dashboard #36
+will build; #38's acceptance criteria say so explicitly rather than
+implying otherwise. A follow-up, [#40](https://github.com/soutes/course-ai-native-zoomcamp/issues/40), `post-mvp` and blocked on
+#13/#16/#36, extends `seed_demo` to also seed `RepoWeek`/`WeeklyReport` once
+those models land.
+
+**Reason:** An issue's acceptance criteria must be checkable against what
+the codebase can actually do (`docs/team/pm.md`); writing criteria that
+assume `RepoWeek`/`WeeklyReport` fields that do not exist would make #38
+unimplementable as written, or force the engineer to silently invent scope
+(building those models early) that belongs to #13/#16 instead.
+
+**Cost accepted:** #38 alone does not make the *richer* current-week
+dashboard reviewable offline - only the `/` page that exists today. Gate
+4's own wording ("stalled", "dashboard") is more naturally read as the
+end-state picture than as what exists at Gate 4 time; #40 closes that gap
+once Gate 5 lands its models, but until then Gate 4's exit condition is
+satisfied by the pre-existing `/` page, not by the fuller picture the
+wording evokes. Flagged to the orchestrator, not papered over.
+
+**Applies to:** [#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38), [#40](https://github.com/soutes/course-ai-native-zoomcamp/issues/40)
