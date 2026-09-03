@@ -1025,3 +1025,74 @@ assert it, not in the sense that a reader of the report sees a note about that s
 Closing that gap, if ever wanted, is new scope for a future issue, not a defect in #26.
 
 **Applies to:** [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27), [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28)
+
+---
+
+## D26 - #27 wires the coach module into `report.py` for the first time; a missing key degrades exactly like `--no-llm`, never errors
+
+**Question:** #27 was filed assuming `report.py` already calls the LLM and `--no-llm` only needs
+to add a bypass. It does not: `handle()` builds `WeeklyReportData(..., coaching=None)` with a
+hardcoded `None` and never imports `portfolio.coach` at all (#24-26 built the module in
+isolation; nothing calls `build_client`/`get_coaching` against real report data yet). So #27 is
+also the first place `get_coaching` gets wired in, not just the flag's bypass path. Separately,
+`docs/privacy.md` says today: "There is no `--no-llm` flag yet. Until it ships, leaving the API
+key unset is the only way to guarantee that nothing is sent" - read literally that leaves open
+whether, once the flag exists, an unset key *without* the flag should keep degrading gracefully
+(so the guarantee holds unconditionally) or should become a hard error now that an explicit
+opt-out exists. `AGENTS.md`'s determinism rule ("`render` must work with `coaching = None`.
+Always.") and Gate 7's requirement that a privacy note precede this phase both point the same
+way, but neither says it in words a test can check against #27 specifically. Also open: what
+counts as "the sections that would carry coaching say so plainly" - `render_report_markdown`
+today never reads `data.coaching` anywhere (confirmed by reading `portfolio/services/render.py`
+in full), and the only filed consumer of `CoachingResult.advice` is #28 (unbuilt, still
+unchecked in `backlog.md`), whose own AC already covers "states explicitly it needs the LLM."
+
+**Decision:**
+1. `report.py --no-llm` skips calling `get_coaching` entirely and never imports
+   `portfolio.coach` at module scope - the import happens only inside the branch that actually
+   needs it, so a `--no-llm` run has `portfolio.coach` absent from `sys.modules`. This makes the
+   issue's existing "no import of the LLM module may happen at all in this path" constraint
+   literally checkable.
+2. Without `--no-llm`: if `LLM_API_KEY` is unset, the command **does not error** - it prints one
+   warning (not per-repo, not per-attempt) and proceeds with `coaching=None`, exit code 0. This
+   is the same output `--no-llm` produces, reached by a different door. `AGENTS.md`'s
+   `coaching=None` rule does not carve out an exception for "flag absent," and this is the
+   reading `docs/privacy.md`'s "unset key means nothing is sent" guarantee needs to stay true
+   once the flag ships, not just before it.
+3. Without `--no-llm` and with a key set: `report.py` builds the client and calls `get_coaching`
+   once against the already-built `WeeklyReportData`. `get_coaching` already resolves any
+   failure (bad key, network error, unparseable response) to `None` internally (#26) - `report.py`
+   does not add a second layer of error handling around the call itself, only around whether to
+   make it. If `get_coaching` returns `None` here, the same one-line warning as point 2 is
+   printed (something was attempted and produced nothing usable), so a reader cannot tell "key
+   never configured" apart from "attempted, got nothing" except by reading the warning text
+   itself, which names the reason.
+4. #27 does **not** change `render_report_markdown` or any section's text. Confirmed by reading
+   `render.py` in full: no section reads `data.coaching` today, so there is nothing in the
+   rendered output that "would carry coaching" yet to make degrade visibly - `coaching` is
+   threaded through and stored on `WeeklyReportData` only. Wiring `CoachingResult.advice` into
+   any section's prose is #28's job (the single focus item) and is scoped there, not invented
+   inside #27.
+5. #27 updates `docs/privacy.md`'s "When nothing is sent" section, replacing the "there is no
+   `--no-llm` flag yet" line with what's actually true post-#27: the flag exists, and an unset
+   key degrades the same way with or without it.
+
+**Reason:** Point 1 makes an already-filed but previously unverifiable constraint into something
+a test can assert. Points 2-3 close the one real fork the spec left open - erroring on a missing
+key would contradict `AGENTS.md`'s unconditional `coaching=None` rule and would make
+`docs/privacy.md`'s "unset key = nothing sent" guarantee false the moment `--no-llm` ships instead
+of the moment it becomes redundant. Point 4 prevents an engineer from inventing render-layer
+changes #27's own filed AC ("say so plainly rather than rendering empty") seems to ask for but
+that nothing in `render.py` today has a place for - that AC is reworded against what's actually
+there instead of dropped, so the underlying concern (a reader not being confused about why there's
+no coaching) is still met, by the warning in points 2-3 rather than by report text. Point 5 keeps
+`docs/privacy.md` truthful the moment this issue ships, matching the pattern D14/D24 already set
+for keeping that document authoritative and current.
+
+**Cost accepted:** A `--no-llm` run and an unset-key run without the flag produce byte-identical
+report output and both exit 0 - a script cannot tell which happened from the report alone, only
+from the printed warning (present in the second case, absent in the first, since `--no-llm` is an
+explicit choice and needs no explaining). Acceptable: the whole point of both paths is that the
+deterministic report is unaffected either way.
+
+**Applies to:** [#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27)
