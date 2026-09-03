@@ -26,6 +26,11 @@ course, spec first, one backlog task at a time.
 [SPEC.md](SPEC.md) holds the reasoning, [FEATURES.md](FEATURES.md) the full inventory, and
 [backlog.md](backlog.md) the groomed task list being worked in order.
 
+## Privacy
+
+[docs/privacy.md](docs/privacy.md) states exactly what leaves the machine when the AI coaching
+feature is enabled, and where it goes.
+
 ## Status
 
 Phase 0 (portfolio triage) is built and the Django project is up. The weekly report itself is
