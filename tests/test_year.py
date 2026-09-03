@@ -110,6 +110,132 @@ def test_shipped_and_dropped_get_the_same_totals_shape():
     assert summary.dropped_count == len(summary.dropped) == 1
 
 
+# --- year_summary: dropped weeks-silent (#32, D31) -----------------------------------
+
+
+@pytest.mark.django_db
+def test_dropped_project_with_history_shows_nonzero_weeks_silent():
+    make_project(
+        "me/abandoned",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),  # 2026-W12
+    )
+    make_repo_week("me/abandoned", "2026-W08", commits=2)
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped_count == 1
+    row = summary.dropped[0]
+    assert row.repo == "me/abandoned"
+    assert row.weeks_silent == 4  # W08 -> W12
+
+
+@pytest.mark.django_db
+def test_dropped_while_still_committing_that_week_shows_zero():
+    make_project(
+        "me/decisive",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),  # 2026-W12
+    )
+    make_repo_week("me/decisive", "2026-W12", commits=1)
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped[0].weeks_silent == 0
+
+
+@pytest.mark.django_db
+def test_dropped_project_with_no_commit_history_shows_none():
+    make_project(
+        "me/never-committed",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),
+    )
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped[0].weeks_silent is None
+
+
+@pytest.mark.django_db
+def test_zero_dropped_projects_has_no_median_line():
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped == []
+    assert summary.dropped_median_weeks_silent is None
+
+
+@pytest.mark.django_db
+def test_median_line_absent_when_every_drop_has_no_history():
+    make_project(
+        "me/ghost",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),
+    )
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped_median_weeks_silent is None
+
+
+@pytest.mark.django_db
+def test_median_over_even_number_of_dropped_projects_averages_middle_two():
+    # weeks-silent values: 2, 5, 8, 11 -> median 6.5
+    make_project(
+        "me/a", status=Project.Status.DROPPED, status_changed_at=datetime(2026, 3, 16, tzinfo=UTC)
+    )
+    make_repo_week("me/a", "2026-W10", commits=1)  # W10 -> W12 = 2 weeks
+
+    make_project(
+        "me/b", status=Project.Status.DROPPED, status_changed_at=datetime(2026, 3, 16, tzinfo=UTC)
+    )
+    make_repo_week("me/b", "2026-W07", commits=1)  # W07 -> W12 = 5 weeks
+
+    make_project(
+        "me/c", status=Project.Status.DROPPED, status_changed_at=datetime(2026, 3, 16, tzinfo=UTC)
+    )
+    make_repo_week("me/c", "2026-W04", commits=1)  # W04 -> W12 = 8 weeks
+
+    make_project(
+        "me/d", status=Project.Status.DROPPED, status_changed_at=datetime(2026, 3, 16, tzinfo=UTC)
+    )
+    make_repo_week("me/d", "2026-W01", commits=1)  # W01 -> W12 = 11 weeks
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    assert summary.dropped_count == 4
+    assert sorted(row.weeks_silent for row in summary.dropped) == [2, 5, 8, 11]
+    assert summary.dropped_median_weeks_silent == 6.5
+
+
+@pytest.mark.django_db
+def test_dropped_median_includes_zeros_and_excludes_no_history():
+    make_project(
+        "me/decisive",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),
+    )
+    make_repo_week("me/decisive", "2026-W12", commits=1)  # 0 weeks silent
+
+    make_project(
+        "me/slow",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),
+    )
+    make_repo_week("me/slow", "2026-W08", commits=1)  # 4 weeks silent
+
+    make_project(
+        "me/ghost",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 16, tzinfo=UTC),
+    )  # no commit history: excluded
+
+    summary = year_summary(2026, UTC_TZ, today=TODAY)
+
+    # median of [0, 4] = 2, "me/ghost" excluded
+    assert summary.dropped_median_weeks_silent == 2
+
+
 # --- year_summary: silent -----------------------------------------------------------
 
 
@@ -292,6 +418,23 @@ def test_year_command_prints_groups(capsys):
 
 
 @pytest.mark.django_db
+def test_year_command_prints_weeks_silent_and_median_for_dropped(capsys):
+    make_project(
+        "me/abandoned",
+        status=Project.Status.DROPPED,
+        status_changed_at=datetime(2026, 3, 18, 12, 0, tzinfo=UTC),  # 2026-W12, tz-safe
+    )
+    make_repo_week("me/abandoned", "2026-W08", commits=2)  # 4 weeks silent
+
+    call_command("year", "2026", stdout=StringIO())
+
+    out = capsys.readouterr().out
+    assert "me/abandoned" in out
+    assert "4" in out
+    assert "Median time-to-decision: 4 weeks" in out
+
+
+@pytest.mark.django_db
 def test_year_command_rejects_malformed_year():
     with pytest.raises(CommandError):
         call_command("year", "not-a-year", stdout=StringIO())
@@ -317,8 +460,9 @@ def test_year_view_renders_groups_and_totals():
     make_project(
         "me/abandoned",
         status=Project.Status.DROPPED,
-        status_changed_at=datetime(2026, 3, 15, tzinfo=UTC),
+        status_changed_at=datetime(2026, 3, 18, 12, 0, tzinfo=UTC),  # 2026-W12, tz-safe
     )
+    make_repo_week("me/abandoned", "2026-W08", commits=1)  # 4 weeks silent
     make_project("me/quiet", status=Project.Status.ACTIVE)
     make_repo_week("me/quiet", "2026-W10", commits=1)
 
@@ -329,6 +473,8 @@ def test_year_view_renders_groups_and_totals():
     assert "me/done" in body
     assert "me/abandoned" in body
     assert "me/quiet" in body
+    assert "4 weeks silent" in body
+    assert "Median time-to-decision: 4 weeks" in body
     # order: shipped, dropped, silent
     positions = [body.index(text) for text in ("Shipped", "Dropped", "Silent")]
     assert positions == sorted(positions)

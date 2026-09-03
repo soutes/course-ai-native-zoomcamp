@@ -44,7 +44,7 @@ class Command(BaseCommand):
 
         console.print(f"[bold]{year}[/bold]")
         self._print_ended_group("Shipped", summary.shipped)
-        self._print_ended_group("Dropped", summary.dropped)
+        self._print_dropped_group(summary.dropped, summary.dropped_median_weeks_silent)
         self._print_silent_group(summary.silent)
 
     def _print_ended_group(self, label: str, rows) -> None:
@@ -54,6 +54,18 @@ class Command(BaseCommand):
         for row in rows:
             table.add_row(row.repo, row.end_date.date().isoformat())
         console.print(table)
+
+    def _print_dropped_group(self, rows, median_weeks_silent) -> None:
+        table = Table(title=f"Dropped ({len(rows)})")
+        table.add_column("Repo")
+        table.add_column("Ended")
+        table.add_column("Weeks silent before drop")
+        for row in rows:
+            weeks = "no commit history" if row.weeks_silent is None else str(row.weeks_silent)
+            table.add_row(row.repo, row.end_date.date().isoformat(), weeks)
+        console.print(table)
+        if median_weeks_silent is not None:
+            console.print(f"Median time-to-decision: {median_weeks_silent} weeks")
 
     def _print_silent_group(self, rows) -> None:
         table = Table(title=f"Silent ({len(rows)})")

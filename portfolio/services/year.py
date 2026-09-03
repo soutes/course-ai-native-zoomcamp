@@ -27,6 +27,7 @@ from portfolio.models import Project, RepoWeek
 
 from .stalled import is_stalled, weeks_since_last_commit
 from .stalled_lookup import most_recent_commit_week
+from .time_to_decision import DroppedRow, median_weeks_silent
 from .week import week_window
 
 _YEAR_RE = re.compile(r"^\d{4}$")
@@ -59,7 +60,7 @@ class YearSummary:
 
     year: int
     shipped: list[EndedRow] = field(default_factory=list)
-    dropped: list[EndedRow] = field(default_factory=list)
+    dropped: list[DroppedRow] = field(default_factory=list)
     silent: list[SilentRow] = field(default_factory=list)
     is_empty: bool = False
 
@@ -74,6 +75,15 @@ class YearSummary:
     @property
     def silent_count(self) -> int:
         return len(self.silent)
+
+    @property
+    def dropped_median_weeks_silent(self) -> float | None:
+        """The aggregate line under the dropped group (#32, D31 point 4).
+
+        `None` when no dropped project this year has a numeric weeks-silent
+        answer - the caller renders no line at all, not a `0` or placeholder.
+        """
+        return median_weeks_silent(self.dropped)
 
 
 def parse_year(value: str) -> int:
@@ -128,6 +138,34 @@ def _endings(status: str, year: int, tz: TzInfo) -> list[EndedRow]:
     return rows
 
 
+def _dropped_rows(year: int, tz: TzInfo) -> list[DroppedRow]:
+    """The dropped group, each with its weeks-silent number (#32, D31 point 2).
+
+    `drop_week` is the dropped project's own `status_changed_at` converted to
+    an ISO week label, the same conversion `_endings` already uses for year
+    membership. `weeks_since_last_commit` (#14, reused verbatim) is anchored
+    at that drop week instead of "now" - a commit stored for the drop week
+    itself gives `0`, no `RepoWeek` row with commits at or before it gives
+    `None`, rendered by callers as "no commit history".
+    """
+    rows = []
+    for project in Project.objects.filter(
+        status=Project.Status.DROPPED, status_changed_at__isnull=False
+    ):
+        end_date = project.status_changed_at
+        local_date = end_date.astimezone(tz).date()
+        iso_year, iso_week, _weekday = local_date.isocalendar()
+        if iso_year != year:
+            continue
+        drop_week = f"{iso_year}-W{iso_week:02d}"
+        last_commit_week = most_recent_commit_week(project.repo, drop_week)
+        weeks_silent = weeks_since_last_commit(last_commit_week, drop_week, tz)
+        rows.append(DroppedRow(repo=project.repo, end_date=end_date, weeks_silent=weeks_silent))
+
+    rows.sort(key=lambda row: row.repo)
+    return rows
+
+
 def _silent_rows(year: int, tz: TzInfo, today: date | None) -> tuple[list[SilentRow], str]:
     reference_week = _reference_week(year, tz, today)
     _window_start, window_end = week_window(reference_week, tz=tz)
@@ -155,7 +193,7 @@ def year_summary(year: int, tz: TzInfo, *, today: date | None = None) -> YearSum
     (the command, the view) leave it unset.
     """
     shipped = _endings(Project.Status.SHIPPED, year, tz)
-    dropped = _endings(Project.Status.DROPPED, year, tz)
+    dropped = _dropped_rows(year, tz)
     silent, _reference_week = _silent_rows(year, tz, today)
 
     week_prefix = f"{year}-W"

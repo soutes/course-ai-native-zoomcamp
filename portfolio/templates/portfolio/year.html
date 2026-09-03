@@ -119,9 +119,15 @@
           <li>
             <span class="repo">{{ row.repo }}</span>
             <span class="detail">{{ row.end_date|date:"Y-m-d" }}</span>
+            <span class="detail">
+              {% if row.weeks_silent is None %}no commit history{% else %}{{ row.weeks_silent }} weeks silent{% endif %}
+            </span>
           </li>
         {% endfor %}
       </ul>
+      {% if summary.dropped_median_weeks_silent is not None %}
+        <p class="detail">Median time-to-decision: {{ summary.dropped_median_weeks_silent }} weeks</p>
+      {% endif %}
     {% else %}
       <div class="empty-state"><p>No projects dropped in {{ year }}.</p></div>
     {% endif %}
