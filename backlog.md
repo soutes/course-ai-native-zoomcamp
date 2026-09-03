@@ -83,7 +83,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **18. Repo health checks.** ([#18](https://github.com/soutes/course-ai-native-zoomcamp/issues/18))
   Missing README, tests, CI config, license, description. Done when the signals feed the
   "what went wrong" section.
-- [ ] **19. Lifecycle transitions.** ([#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19))
+- [x] **19. Lifecycle transitions.** ([#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19))
   `manage.py ack <repo> --shipped|--pause|--drop`, plus admin actions for the same.
   Done when an ended project leaves the weekly report and keeps its record.
 - [ ] **20. Shipped auto-detection.** ([#20](https://github.com/soutes/course-ai-native-zoomcamp/issues/20))
