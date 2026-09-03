@@ -15,6 +15,7 @@ from portfolio.services.render import (
     build_report_snapshot,
     render_report_markdown,
 )
+from portfolio.services.stalled import STALLED_THRESHOLD_WEEKS
 from portfolio.services.types import NewRepo, OpenPullRequest, UnmergedBranch
 
 NOW = datetime.now(UTC)
@@ -652,3 +653,97 @@ def test_zero_commits_gets_no_rhythm_wording_anywhere():
 
     for phrase in ("all on one day", "a habit", "spread across"):
         assert phrase not in md
+
+
+# --- abandoned counter header line (#23, D4) ----------------------------------------
+
+
+def test_abandoned_header_zero_stalled_still_renders():
+    repos = [make_repo(repo="me/alpha", stalled=False), make_repo(repo="me/beta", stalled=False)]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+
+    assert f"0 projects with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" in md
+
+
+def test_abandoned_header_singular_for_one_stalled_repo():
+    repos = [
+        make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=5),
+        make_repo(repo="me/beta", stalled=False),
+    ]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+
+    assert f"1 project with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" in md
+    assert f"1 projects with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" not in md
+
+
+def test_abandoned_header_plural_for_multiple_stalled_repos():
+    repos = [
+        make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=5),
+        make_repo(repo="me/beta", commits=0, stalled=True, weeks_since_last_commit=9),
+        make_repo(repo="me/gamma", stalled=False),
+    ]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+
+    assert f"2 projects with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" in md
+
+
+def test_abandoned_header_line_sits_right_after_title_and_before_went_well():
+    repos = [make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=5)]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+    lines = md.splitlines()
+
+    title_idx = next(i for i, line in enumerate(lines) if line.startswith("# Weekly Retro"))
+    went_well_idx = lines.index("## What went well")
+    header_idx = next(
+        i
+        for i, line in enumerate(lines)
+        if "projects with no commit for" in line or "project with no commit for" in line
+    )
+
+    assert title_idx < header_idx < went_well_idx
+    # nothing but a blank line between the title and the header line
+    assert lines[title_idx + 1] == ""
+    assert lines[title_idx + 2] == lines[header_idx]
+
+
+def test_abandoned_header_line_has_no_emoji_or_symbol_prefix():
+    repos = [make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=5)]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+    header_line = next(line for line in md.splitlines() if "with no commit for" in line)
+
+    assert header_line[0].isdigit()
+
+
+def test_abandoned_header_count_matches_stalled_tagged_repos_in_went_wrong():
+    """Invariant: every repo counted by the header line is already named in
+    '## What went wrong' with its '- stalled' tag."""
+    repos = [
+        make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=5),
+        make_repo(repo="me/beta", commits=0, stalled=True, weeks_since_last_commit=12),
+        make_repo(repo="me/gamma", commits=0, stalled=False, weeks_since_last_commit=1),
+        make_repo(repo="me/delta", commits=3, stalled=False),
+    ]
+    data = WeeklyReportData(week="2026-W35", repos=repos)
+    md = render_report_markdown(data)
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+
+    count = abandoned_count(repos)
+    assert count == 2
+    assert f"{count} projects with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" in md
+
+    stalled_repos = [r for r in repos if r.stalled]
+    assert len(stalled_repos) == count
+    for r in stalled_repos:
+        repo_line = next(line for line in wrong_section.splitlines() if r.repo in line)
+        assert "- stalled" in repo_line
+
+
+def test_abandoned_header_is_pure_and_reproduces_for_an_old_week():
+    repos = [make_repo(repo="me/alpha", commits=0, stalled=True, weeks_since_last_commit=20)]
+    data = WeeklyReportData(week="2020-W01", repos=repos)
+
+    first = render_report_markdown(data)
+    second = render_report_markdown(data)
+
+    assert first == second
+    assert f"1 project with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks" in first

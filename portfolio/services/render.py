@@ -12,6 +12,7 @@ from rich.text import Text
 
 from .health import HealthSignals
 from .momentum_delta import PreviousMomentum, momentum_delta_text
+from .stalled import STALLED_THRESHOLD_WEEKS
 from .types import Decision, NewRepo, OpenPullRequest, TriagePlan, UnmergedBranch, Verdict
 from .week import previous_week_label
 
@@ -405,6 +406,12 @@ def render_report_markdown(data: WeeklyReportData) -> str:
 
     prior_week = previous_week_label(data.week)
     lines = [f"# Weekly Retro - {data.week} (this week), vs {prior_week} (last week)", ""]
+
+    abandoned = abandoned_count(repos)
+    lines.append(
+        f"{abandoned} project{_s(abandoned)} with no commit for {STALLED_THRESHOLD_WEEKS}+ weeks"
+    )
+    lines.append("")
 
     lines.append("## What went well")
     lines.append("")
