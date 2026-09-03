@@ -1096,3 +1096,88 @@ explicit choice and needs no explaining). Acceptable: the whole point of both pa
 deterministic report is unaffected either way.
 
 **Applies to:** [#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27)
+
+---
+
+## D27 - #28's focus item keeps #16's deterministic repo selection; coaching only supplies the sentence's wording, never the pick, and a repo with no usable advice falls back to the existing deterministic line rather than an LLM-needed placeholder
+
+**Question:** #28 is the first and only issue that reads `data.coaching` in `render.py` (D26 point
+4, confirmed by reading `render.py` in full: `_focus_item_text` today ignores `coaching`
+entirely). But `_focus_item_text` (#16, shipped and tested) already renders exactly one
+repo-grounded, forward-looking, action-phrased line deterministically - so it is not obvious what
+"consuming `CoachingResult.advice`" is supposed to change. Three things are left open by the filed
+issue. First, `CoachingResult.advice` (D25) is a flat `{repo: advice string}` dict with no ranking
+- nothing in it says which repo is "the" focus for the week, so something still has to choose one
+repo out of several silent/mid-flight/weakest candidates, and the model was never asked to make
+that choice (`AGENTS.md`: "the cap of one is enforced in code, not requested politely in the
+prompt" is already #28's own filed Constraint). Second, `_SYSTEM_PROMPT` (`coach.py`, shipped by
+#25) asks the model for retrospective behavioral commentary ("talk about patterns like starting a
+project before finishing another...") with no instruction to phrase anything as next week's
+action - rendering that prose verbatim as the focus item risks failing #28's own AC ("phrased as
+an action for the **coming** week, not a summary of the week that ended"). Third, #28's own filed
+AC offers two readings for `coaching = None` or a repo with no usable advice: "the report still
+ends in a single forward-looking line, OR states plainly that the focus needs the LLM" - these
+produce different output, and `AGENTS.md`'s unconditional "`render` must work with `coaching =
+None`. Always." plus #16's already-shipped, already-tested behavior (a `--no-llm` report has
+always ended with one concrete, repo-named action line, never a placeholder) both point at one of
+the two readings without the issue saying so.
+
+**Decision:**
+1. **Selection stays exactly #16's deterministic priority algorithm** (`_focus_item_text`'s
+   existing ranking: a silent repo, worst weeks-since-last-commit first, `None` ranking worst >
+   the oldest open branch/PR in the portfolio > the repo with the fewest commits this week when
+   everything is moving) - unchanged by #28. Coaching never influences *which* repo is picked.
+   This is what makes point 1 above ("chosen deterministically... not left to render") true by
+   construction: the repo is fixed before `coaching` is even consulted, so there is no ranking
+   problem to solve against unstructured advice text, and the pick is identical whether or not
+   the LLM ran.
+2. **Coaching supplies wording, not the pick.** `_focus_item_text` gains a `coaching:
+   CoachingResult | None` parameter. Once the target repo is selected (step 1), if `coaching` is
+   not `None` and that repo has an entry in `coaching.advice` (not `unavailable`, per D25), the
+   rendered line is that advice text, wrapped in a fixed template that names the repo and keeps
+   the line forward-looking regardless of the model's exact phrasing, e.g. `"This week: **{repo}**
+   - {advice}"`. This keeps the "cites at least one repo name" AC true unconditionally (the
+   template supplies the name; the model prose does not have to), and keeps the "about behavior"
+   Constraint true because `_SYSTEM_PROMPT` already forbids code-level advice (D25/#25) - #28 adds
+   no new LLM call, per `AGENTS.md`'s "one batched call per report."
+3. **Prompt wording gets one added sentence, not a schema change.** `_SYSTEM_PROMPT` in
+   `coach.py` (#25, shipped) is extended with one sentence asking the model to phrase its advice
+   for a repo as something to do in the coming week, not a recap of the one that ended. This is
+   in #28's scope, not a reopening of D25: the JSON schema, the single batched call, and
+   `CoachingResult`'s shape are all untouched - only the wording of the existing prompt string
+   changes, and #28 is the first (and, per D25, only) issue that needs this property to hold, so
+   it is the natural place to ask for it.
+4. **Fallback, not a placeholder:** when `coaching` is `None` (`--no-llm`, or `get_coaching`
+   returned `None` for the whole report), or the selected repo is in `coaching.unavailable`, or
+   has no entry in `coaching.advice` at all, `_focus_item_text` renders **today's existing,
+   unchanged deterministic sentence** for that repo - the same text #16 already produces and
+   already tests. It never renders a "the focus needs the LLM" line. This resolves #28's own
+   either/or AC in favor of the first branch ("the report still ends in a single forward-looking
+   line"), because that is what `AGENTS.md`'s unconditional rule and #16's already-shipped,
+   already-tested behavior both already guarantee, and a placeholder would be a regression a
+   `--no-llm` user would see every single run (the common case per `docs/privacy.md`), not an edge
+   case.
+
+**Reason:** Point 1 is the only reading that keeps `render` working identically with `coaching =
+None` (`AGENTS.md`) without special-casing that path - the selection logic is one algorithm,
+always, and coaching only ever changes the sentence attached to whatever it already picked. Point
+2 is what actually makes #28 "the issue that reads `data.coaching`" without silently expanding
+scope into a second LLM call or a new response schema, both of which are #25/#26's closed
+territory (D24, D25) and would need those decisions reopened first, not invented inside #28. Point
+3 closes the one real gap between the shipped prompt's retrospective framing and #28's own
+forward-looking AC with the smallest possible change - a sentence, not new scope. Point 4 exists
+because the two readings in #28's own filed AC diverge on real output and `AGENTS.md` already
+answers which one: a `--no-llm` retro that suddenly says "ask an LLM" where it used to say "get
+`weekly` committing again this week" is a regression, not a feature, and #16's existing tests
+would need to be rewritten to make the placeholder reading true, which contradicts "`render` must
+work with `coaching = None`. Always" reading naturally as "the same way, every time."
+
+**Cost accepted:** The focus item's exact wording becomes non-deterministic (LLM-dependent) when
+coaching succeeds for the selected repo, even though *which* repo and *whether* the line renders
+at all stay deterministic - acceptable because #28's own filed Constraint only requires the count
+(one) and the selection to be enforced in code, not the sentence's exact words. A repo whose
+coaching advice happens to read as a summary despite the added prompt sentence (point 3) is a
+prompt-quality problem, not a code defect - nothing in `coach.py` validates advice content beyond
+D25's existing non-empty-string check.
+
+**Applies to:** [#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28), [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26), [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16)
