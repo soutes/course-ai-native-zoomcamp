@@ -127,7 +127,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 
 ## Phase 5 — Goals
 
-- [ ] **29. Goal drift judgement.** ([#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29))
+- [x] **29. Goal drift judgement.** ([#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29))
   Did this week's commits move toward the stated goal? Done when a week of unrelated work is
   called out as drift.
 - [ ] **30. Stale goal detection.** ([#30](https://github.com/soutes/course-ai-native-zoomcamp/issues/30))
