@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>weekly - not found</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --border: #e5e3df;
+      --text: #1c1a17;
+      --muted: #6b6862;
+      --accent: #2563eb;
+      --bad: #dc2626;
+      --radius: .6rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161513;
+        --surface: #1e1c19;
+        --border: #33302b;
+        --text: #f2f0ec;
+        --muted: #9c988f;
+        --bad: #f87171;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 5rem;
+    }
+
+    header.top { display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 1.75rem; flex-wrap: wrap; gap: .5rem; }
+    header.top a.brand { font-weight: 700; font-size: 1.1rem; color: var(--text);
+      text-decoration: none; letter-spacing: -.02em; }
+
+    .error-state {
+      margin: 1rem 0 2rem;
+      padding: 1.4rem 1.6rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--bad);
+      border-radius: var(--radius);
+    }
+    .error-state .code {
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-size: .75rem;
+      color: var(--bad);
+      font-weight: 700;
+      margin: 0 0 .5rem;
+    }
+    .error-state p { margin: 0 0 .5rem; color: var(--muted); }
+    .error-state p:last-child { margin-bottom: 0; }
+
+    .links { color: var(--muted); margin-top: 1.5rem; font-size: .85rem; }
+    .links a { color: var(--accent); text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">weekly</a>
+  </header>
+
+  <div class="error-state">
+    <p class="code">404 - not found</p>
+    <p>There is no page or retro at this address. It may have been a mistyped week label, or a week that has no stored report yet.</p>
+  </div>
+
+  <p class="links">
+    <a href="/">back to this week</a>
+  </p>
+</body>
+</html>
