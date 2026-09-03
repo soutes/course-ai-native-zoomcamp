@@ -80,7 +80,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 
 ## Phase 2 — Health and lifecycle
 
-- [ ] **18. Repo health checks.** ([#18](https://github.com/soutes/course-ai-native-zoomcamp/issues/18))
+- [x] **18. Repo health checks.** ([#18](https://github.com/soutes/course-ai-native-zoomcamp/issues/18))
   Missing README, tests, CI config, license, description. Done when the signals feed the
   "what went wrong" section.
 - [ ] **19. Lifecycle transitions.** ([#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19))
