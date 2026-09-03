@@ -55,7 +55,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **11. ISO week window helper.** ([#11](https://github.com/soutes/course-ai-native-zoomcamp/issues/11))
   Monday 00:00 to Sunday 23:59 local, plus parsing of `2026-W36`. Done when the boundaries are
   unit-tested, including the year-end rollover.
-- [ ] **12. Fetch a week of commits per repo.** ([#12](https://github.com/soutes/course-ai-native-zoomcamp/issues/12))
+- [x] **12. Fetch a week of commits per repo.** ([#12](https://github.com/soutes/course-ai-native-zoomcamp/issues/12))
   Filtered by my authorship emails so shared repos count only my work. Done when the count
   matches what GitHub's own UI reports for the same week.
 - [ ] **13. Momentum stats.** ([#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13))
