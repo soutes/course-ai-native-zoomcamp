@@ -62,6 +62,19 @@ class Repo:
 
 
 @dataclass
+class Commit:
+    """One commit I authored, as far as the weekly report cares.
+
+    Deliberately small - just enough for #13 (momentum stats) and #25 (the LLM
+    prompt, subjects only, never diffs).
+    """
+
+    sha: str
+    authored_at: datetime
+    subject: str
+
+
+@dataclass
 class Decision:
     """Triage's call on one repo, with the reasons that produced it."""
 

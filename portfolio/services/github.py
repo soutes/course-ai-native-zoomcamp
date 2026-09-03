@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 from .cache import Cache
-from .types import Repo
+from .types import Commit, Repo
 
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
@@ -144,6 +144,88 @@ class GitHub:
 
         self.cache.set(key, count)
         return count
+
+    def commits_in_window(
+        self,
+        full_name: str,
+        window: tuple[datetime, datetime],
+        emails: list[str],
+    ) -> list[Commit]:
+        """Commits *I* authored in `window` - see docs/decisions.md D1.
+
+        `window` is the local-time ``(start, end)`` tuple #11's `week_window` returns;
+        converted here to UTC ISO-8601 for `since`/`until`. No server-side `author=`
+        filter is sent - every commit in the window comes back and is matched here,
+        client-side, against `emails` (`commit.author.email`, case-insensitive), since
+        GitHub, work and `noreply` addresses differ across machines.
+
+        Merge commits (more than one parent) are excluded so a merge does not inflate
+        a quiet week. Results are deduped by sha, so a commit I authored but someone
+        else committed (rebase, merge) is counted once. A repo with zero commits in
+        the window, or an empty repo (GitHub answers 409), returns an empty list.
+        Paginated to the end - a week with more than 100 commits returns them all.
+        """
+        start, end = window
+        since = start.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        until = end.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        wanted = {e.strip().lower() for e in emails if e.strip()}
+
+        commits: dict[str, Commit] = {}
+        page = 1
+        while True:
+            batch = self._cached_json_allow_409(
+                f"/repos/{full_name}/commits",
+                since=since,
+                until=until,
+                per_page=100,
+                page=page,
+            )
+            if not batch:
+                break
+
+            for raw in batch:
+                if len(raw.get("parents") or []) > 1:
+                    continue  # merge commit
+                author_email = ((raw.get("commit") or {}).get("author") or {}).get("email", "")
+                if author_email.strip().lower() not in wanted:
+                    continue
+                sha = raw["sha"]
+                if sha in commits:
+                    continue
+                commits[sha] = self._to_commit(raw)
+
+            if len(batch) < 100:
+                break
+            page += 1
+
+        return list(commits.values())
+
+    @staticmethod
+    def _to_commit(raw: dict[str, Any]) -> Commit:
+        commit = raw["commit"]
+        subject = commit["message"].splitlines()[0] if commit.get("message") else ""
+        return Commit(
+            sha=raw["sha"],
+            authored_at=_parse_dt(commit["author"]["date"]),
+            subject=subject,
+        )
+
+    def _cached_json_allow_409(self, path: str, **params: Any) -> Any:
+        """Like `_cached_json`, but a 409 (empty repository) is an empty list,
+        not an error - the commits endpoint answers 409 for repos with no commits."""
+        key = f"GET {path} {sorted(params.items())}"
+        hit = self.cache.get(key)
+        if hit is not None:
+            return hit
+        r = self._get(path, **params)
+        if r.status_code == 409:
+            data: Any = []
+        elif r.status_code >= 400:
+            raise GitHubError(f"GET {path} failed: {r.status_code} {r.text[:200]}")
+        else:
+            data = r.json()
+        self.cache.set(key, data)
+        return data
 
     def has_readme(self, full_name: str) -> bool:
         key = f"README {full_name}"
