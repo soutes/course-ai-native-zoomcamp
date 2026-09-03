@@ -757,3 +757,39 @@ falls into. If a future issue wants literal weekday names, it will need to exten
 migration - not scoped here.
 
 **Applies to:** [#22](https://github.com/soutes/course-ai-native-zoomcamp/issues/22), [#13](https://github.com/soutes/course-ai-native-zoomcamp/issues/13)
+
+---
+
+## D21 - The abandoned-count line renders as plain text, without `SPEC.md`'s `⚠` prefix
+
+**Question:** `SPEC.md` section 8b's report skeleton shows the count line as
+`⚠ 2 projects with no commit for 4+ weeks` - prefixed with a warning glyph.
+But #23's own filed Constraints say "Tone is blunt. No softening, no
+encouragement, **no emoji**." `⚠` is a symbol, not a letter, and reads as
+exactly the kind of decoration the constraint rules out. Nothing in
+`AGENTS.md` or `docs/process.md` says which one wins when `SPEC.md`'s worked
+example and an issue's own Constraints disagree - `process.md` only settles
+`docs/outdated/` losing to an issue, and `SPEC.md` is not in that directory.
+
+**Decision:** Render the line as plain text, exactly `N projects with no
+commit for 4+ weeks` (or the zero/singular variants), with no leading
+symbol. #23's Constraints are the more specific, more recently written
+instruction for this exact line, and match the rest of the report's existing
+style - `render.py` uses no emoji or symbol prefix anywhere else
+(`_went_wrong_lines`, `_focus_item_text`, the dashboard's own `.abandoned`
+block in #36 all render plain text or CSS-driven color, never a glyph).
+
+**Reason:** An issue's own Constraints are what an engineer implements
+against; `SPEC.md`'s skeleton is illustrative of the shape of the report
+(headings, sections, roughly this content) rather than a literal
+character-for-character spec, and section 8b predates #23's explicit tone
+constraint. Keeping the whole report free of symbols also avoids a second,
+narrower question this would otherwise raise - whether `⚠` is itself
+readable through `rich.markdown.Markdown` and copy-pasted terminals - that
+plain text sidesteps entirely.
+
+**Cost accepted:** The rendered report differs from `SPEC.md`'s literal
+worked example by one dropped character. Nothing else about the line's
+wording, placement or content changes.
+
+**Applies to:** [#23](https://github.com/soutes/course-ai-native-zoomcamp/issues/23)
