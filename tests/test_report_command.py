@@ -59,6 +59,9 @@ class FakeGitHub:
         branches: dict[str, list[UnmergedBranch]] | None = None,
         prs: dict[str, list[OpenPullRequest]] | None = None,
         trees: dict[str, TreeListing] | None = None,
+        releases: dict[str, bool] | None = None,
+        tags: dict[str, list[str]] | None = None,
+        readmes: dict[str, str | None] | None = None,
     ):
         self._repos = repos
         self._commits = commits or {}
@@ -66,6 +69,9 @@ class FakeGitHub:
         self._branches = branches or {}
         self._prs = prs or {}
         self._trees = trees or {}
+        self._releases = releases or {}
+        self._tags = tags or {}
+        self._readmes = readmes or {}
         self.calls: list[str] = []
 
     def __enter__(self):
@@ -94,6 +100,18 @@ class FakeGitHub:
 
     def tree(self, full_name, default_branch):
         return self._trees.get(full_name, TreeListing(paths=[], truncated=False))
+
+    def has_release(self, full_name):
+        self.calls.append(f"has_release {full_name}")
+        return self._releases.get(full_name, False)
+
+    def tags(self, full_name):
+        self.calls.append(f"tags {full_name}")
+        return list(self._tags.get(full_name, []))
+
+    def readme_text(self, full_name):
+        self.calls.append(f"readme_text {full_name}")
+        return self._readmes.get(full_name)
 
 
 def make_commit(sha, *, day, subject="work") -> Commit:
@@ -463,3 +481,262 @@ def test_repo_description_and_commit_subject_with_brackets_are_rendered_and_not_
     row = WeeklyReport.objects.get(week=WEEK)
     assert "a repo with [brackets] in it" in row.markdown
     assert "[urgent] fix bracket bug" in row.markdown
+
+
+# --- shipped auto-detection (#20) -----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_released_repo_is_auto_shipped_and_absent_from_the_same_run(
+    monkeypatch, settings, tmp_path
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/finished", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/finished")], releases={"me/finished": True})
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "me/finished" not in row.markdown
+
+    project = Project.objects.get(repo="me/finished")
+    assert project.status == Project.Status.SHIPPED
+    assert project.status_reason == "Auto-detected: released"
+
+
+@pytest.mark.django_db
+def test_a_semver_tag_ships_the_repo_when_no_release(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/tagged", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/tagged")], tags={"me/tagged": ["v1.2.0"]})
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/tagged")
+    assert project.status == Project.Status.SHIPPED
+    assert project.status_reason == "Auto-detected: tag v1.2.0"
+
+
+@pytest.mark.django_db
+def test_a_prerelease_tag_does_not_ship_the_repo(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/rc", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/rc")], tags={"me/rc": ["v1.0.0-rc1"]})
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/rc")
+    assert project.status == Project.Status.ACTIVE
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "me/rc" in row.markdown
+
+
+@pytest.mark.django_db
+def test_readme_status_complete_ships_the_repo_when_no_release_or_tag(
+    monkeypatch, settings, tmp_path
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/done", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/done")], readmes={"me/done": "# Done\n\nStatus: Complete\n"}
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/done")
+    assert project.status == Project.Status.SHIPPED
+    assert project.status_reason == "Auto-detected: README says Status: Complete"
+
+
+@pytest.mark.django_db
+def test_readme_in_progress_does_not_ship_the_repo(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/wip", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/wip")], readmes={"me/wip": "Status: WIP"})
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/wip")
+    assert project.status == Project.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_multi_signal_priority_release_over_tag_and_readme(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/all-three", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/all-three")],
+        releases={"me/all-three": True},
+        tags={"me/all-three": ["v1.0"]},
+        readmes={"me/all-three": "Status: Complete"},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/all-three")
+    assert project.status_reason == "Auto-detected: released"
+
+
+@pytest.mark.django_db
+def test_multi_signal_priority_tag_over_readme(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/tag-and-readme", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/tag-and-readme")],
+        tags={"me/tag-and-readme": ["v3.0"]},
+        readmes={"me/tag-and-readme": "Status: Complete"},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/tag-and-readme")
+    assert project.status_reason == "Auto-detected: tag v3.0"
+
+
+@pytest.mark.django_db
+def test_explicit_ack_status_reason_is_never_overridden_by_a_shipped_signal(
+    monkeypatch, settings, tmp_path
+):
+    """A project a human paused (with a non-Auto-detected reason) that is back in
+    the report population (paused_until has passed) must never be auto-shipped,
+    even when a shipped signal fires for it - explicit human state wins, always."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    project = Project.objects.create(
+        repo="me/human-paused",
+        status=Project.Status.PAUSED,
+        status_reason="taking a break",
+        paused_until=WINDOW[0].date() - timedelta(days=1),
+    )
+    assert project.in_weekly_report is True
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/human-paused")], releases={"me/human-paused": True}
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project.refresh_from_db()
+    assert project.status == Project.Status.PAUSED
+    assert project.status_reason == "taking a break"
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "me/human-paused" in row.markdown
+
+
+@pytest.mark.django_db
+def test_auto_shipped_project_reactivates_when_commits_resume_in_a_later_week(
+    monkeypatch, settings, tmp_path
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(
+        repo="me/reawakened",
+        status=Project.Status.SHIPPED,
+        status_reason="Auto-detected: released",
+    )
+    # not in `projects` population (status=SHIPPED), so no Project row is needed
+    # to also be active - the reactivation pass queries SHIPPED projects directly.
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/reawakened")],
+        commits={"me/reawakened": [make_commit("s1", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/reawakened")
+    assert project.status == Project.Status.ACTIVE
+    assert project.status_reason == "Auto-detected: commits resumed"
+
+
+@pytest.mark.django_db
+def test_manually_shipped_project_is_never_auto_reactivated(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(
+        repo="me/manually-shipped",
+        status=Project.Status.SHIPPED,
+        status_reason="shipped it myself",
+    )
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/manually-shipped")],
+        commits={"me/manually-shipped": [make_commit("s1", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/manually-shipped")
+    assert project.status == Project.Status.SHIPPED
+    assert project.status_reason == "shipped it myself"
+
+
+@pytest.mark.django_db
+def test_auto_shipped_project_with_no_commits_this_week_stays_shipped(
+    monkeypatch, settings, tmp_path
+):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(
+        repo="me/still-quiet",
+        status=Project.Status.SHIPPED,
+        status_reason="Auto-detected: released",
+    )
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/still-quiet")])
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    project = Project.objects.get(repo="me/still-quiet")
+    assert project.status == Project.Status.SHIPPED
+    assert project.status_reason == "Auto-detected: released"
+
+
+@pytest.mark.django_db
+def test_repo_scoped_run_does_not_run_the_reactivation_pass(monkeypatch, settings, tmp_path):
+    """A `--repo` run is a narrowed view of one project (D5-style reasoning) - it
+    must not flip the state of an unrelated, previously auto-shipped project."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/active", status=Project.Status.ACTIVE)
+    Project.objects.create(
+        repo="me/other-shipped",
+        status=Project.Status.SHIPPED,
+        status_reason="Auto-detected: released",
+    )
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/active")],
+        commits={"me/other-shipped": [make_commit("s1", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK, "--repo", "me/active")
+
+    project = Project.objects.get(repo="me/other-shipped")
+    assert project.status == Project.Status.SHIPPED

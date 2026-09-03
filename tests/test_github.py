@@ -396,3 +396,124 @@ def test_tree_is_cached_a_rerun_costs_zero_requests(settings, tmp_path):
 
     assert first.paths == second.paths == ["README.md"]
     assert calls["n"] == 1
+
+
+# --- GitHub.tags (#20) ------------------------------------------------------------------
+
+
+def test_tags_returns_names():
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        if page == 1:
+            return httpx.Response(200, json=[{"name": "v1.0"}, {"name": "v1.0.0-rc1"}])
+        return httpx.Response(200, json=[])
+
+    gh = make_gh(handler)
+
+    assert gh.tags("me/demo") == ["v1.0", "v1.0.0-rc1"]
+
+
+def test_tags_paginates_to_the_end():
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        pages = {
+            1: [{"name": f"v0.{i}"} for i in range(100)],
+            2: [{"name": "v2.0"}],
+        }
+        return httpx.Response(200, json=pages.get(page, []))
+
+    gh = make_gh(handler)
+
+    tags = gh.tags("me/demo")
+
+    assert len(tags) == 101
+    assert tags[-1] == "v2.0"
+
+
+def test_tags_empty_returns_empty_list():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    gh = make_gh(handler)
+
+    assert gh.tags("me/demo") == []
+
+
+@pytest.mark.django_db
+def test_tags_is_cached_a_rerun_costs_zero_requests(settings, tmp_path):
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=[{"name": "v1.0"}])
+
+    cache = Cache("week-2026-W36", enabled=True)
+    gh = make_gh(handler, cache=cache)
+    first = gh.tags("me/demo")
+    gh2 = make_gh(handler, cache=cache)
+    second = gh2.tags("me/demo")
+
+    assert first == second == ["v1.0"]
+    assert calls["n"] == 1
+
+
+# --- GitHub.readme_text (#20, D18) -------------------------------------------------------
+
+
+def test_readme_text_returns_decoded_body():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["accept"] == "application/vnd.github.raw+json"
+        return httpx.Response(200, text="# Demo\n\nStatus: Complete\n")
+
+    gh = make_gh(handler)
+
+    assert gh.readme_text("me/demo") == "# Demo\n\nStatus: Complete\n"
+
+
+def test_readme_text_missing_readme_returns_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    gh = make_gh(handler)
+
+    assert gh.readme_text("me/demo") is None
+
+
+@pytest.mark.django_db
+def test_readme_text_is_cached_a_rerun_costs_zero_requests(settings, tmp_path):
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, text="Status: Complete")
+
+    cache = Cache("week-2026-W36", enabled=True)
+    gh = make_gh(handler, cache=cache)
+    first = gh.readme_text("me/demo")
+    gh2 = make_gh(handler, cache=cache)
+    second = gh2.readme_text("me/demo")
+
+    assert first == second == "Status: Complete"
+    assert calls["n"] == 1
+
+
+@pytest.mark.django_db
+def test_readme_text_missing_is_also_cached(settings, tmp_path):
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    cache = Cache("week-2026-W36", enabled=True)
+    gh = make_gh(handler, cache=cache)
+    first = gh.readme_text("me/demo")
+    gh2 = make_gh(handler, cache=cache)
+    second = gh2.readme_text("me/demo")
+
+    assert first is None
+    assert second is None
+    assert calls["n"] == 1

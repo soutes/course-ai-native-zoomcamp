@@ -24,9 +24,11 @@ from portfolio.services import render
 from portfolio.services.cache import Cache
 from portfolio.services.github import GitHub, GitHubError
 from portfolio.services.health import judge_health
+from portfolio.services.lifecycle import apply_transition
 from portfolio.services.momentum import compute_repo_week
 from portfolio.services.new_repos import new_repos_this_week
 from portfolio.services.repoweek import persist_repo_week
+from portfolio.services.shipped import AUTO_PREFIX, detect_shipped
 from portfolio.services.stalled_lookup import stalled_status_for_project
 from portfolio.services.week import week_label, week_window
 
@@ -112,6 +114,29 @@ class Command(BaseCommand):
                         progress.update(task, description=f"fetching {project.repo}")
                         full_name = project.repo
 
+                        # #20: shipped-signal detection, before anything else is
+                        # fetched for this repo. Only ever runs against a project
+                        # with no human-typed status_reason (blank, i.e. still
+                        # untouched) or one this same mechanism wrote previously
+                        # (D18) - an explicit `ack` reason is never overridden. A
+                        # signal that fires writes the transition via #19's
+                        # apply_transition and drops the repo from this run's
+                        # output, not the next one's.
+                        if project.status_reason == "" or project.status_reason.startswith(
+                            AUTO_PREFIX
+                        ):
+                            shipped_reason = detect_shipped(
+                                has_release=gh.has_release(full_name),
+                                tags=gh.tags(full_name),
+                                readme_text=gh.readme_text(full_name),
+                            )
+                            if shipped_reason:
+                                apply_transition(
+                                    project, Project.Status.SHIPPED, reason=shipped_reason
+                                )
+                                progress.advance(task)
+                                continue
+
                         commits = gh.commits_in_window(full_name, window, emails)
                         commit_counts[full_name] = len(commits)
                         commit_subjects = [
@@ -165,6 +190,26 @@ class Command(BaseCommand):
                     else [r for r in all_repos if r.full_name == options["repo"]]
                 )
                 new_repos = new_repos_this_week(new_repo_candidates, window, commit_counts)
+
+                # #20: reactivation pass, D18 - a project this feature auto-shipped
+                # that has since resumed committing goes back to `active`. Scoped to
+                # `status_reason` starting with `AUTO_PREFIX` only, so a project a
+                # human shipped via `ack --shipped` is never auto-reactivated. Runs
+                # only on a full-portfolio run: `--repo` is a narrowed view of one
+                # project (same reasoning as skipping `WeeklyReport` persistence
+                # below) and must not flip the state of an unrelated repo.
+                if not options["repo"]:
+                    auto_shipped = Project.objects.filter(status=Project.Status.SHIPPED).filter(
+                        status_reason__startswith=AUTO_PREFIX
+                    )
+                    for shipped_project in auto_shipped:
+                        resumed = gh.commits_in_window(shipped_project.repo, window, emails)
+                        if resumed:
+                            apply_transition(
+                                shipped_project,
+                                Project.Status.ACTIVE,
+                                reason=f"{AUTO_PREFIX}commits resumed",
+                            )
         except GitHubError as exc:
             raise CommandError(str(exc)) from exc
 

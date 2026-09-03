@@ -58,9 +58,11 @@ class GitHub:
 
     # --- low level -----------------------------------------------------------
 
-    def _get(self, path: str, **params: Any) -> httpx.Response:
+    def _get(
+        self, path: str, headers: dict[str, str] | None = None, **params: Any
+    ) -> httpx.Response:
         try:
-            r = self.client.get(path, params=params)
+            r = self.client.get(path, params=params, headers=headers)
         except httpx.HTTPError as exc:
             raise GitHubError(f"Network error calling {path}: {exc}") from exc
 
@@ -269,6 +271,50 @@ class GitHub:
         found = r.status_code == 200 and bool(r.json())
         self.cache.set(key, found)
         return found
+
+    def tags(self, full_name: str) -> list[str]:
+        """Every tag name for a repo (#20's version-tag shipped signal).
+
+        `GET /repos/{owner}/{repo}/tags`, paginated and cached page by page
+        like `branches` - a re-run costs zero requests. Names are returned
+        exactly as GitHub has them (e.g. `v1.2.0`); matching against the
+        `^v?\\d+\\.\\d+(\\.\\d+)?$` semver-style pattern is `shipped.shipped_tag`'s
+        job, not this method's.
+        """
+        result: list[str] = []
+        page = 1
+        while True:
+            batch = self._cached_json(f"/repos/{full_name}/tags", per_page=100, page=page)
+            if not batch:
+                return result
+            result.extend(t["name"] for t in batch)
+            if len(batch) < 100:
+                return result
+            page += 1
+
+    def readme_text(self, full_name: str) -> str | None:
+        """The README's decoded text content (#20, D18).
+
+        `has_readme()` only checks presence via a status code; detecting a
+        `Status: Complete` *line inside* the README needs its actual body,
+        which no existing call fetches - a genuinely new request, cached like
+        every other read. The raw media type on the same
+        `/repos/{full}/readme` endpoint returns the file's literal bytes
+        instead of a JSON-wrapped base64 blob. `None` means no README (a 404)
+        or an unreadable response; an empty cached string round-trips back to
+        `None` rather than being confused with "not yet fetched".
+        """
+        key = f"README_TEXT {full_name}"
+        hit = self.cache.get(key)
+        if hit is not None:
+            return hit or None
+        r = self._get(
+            f"/repos/{full_name}/readme",
+            headers={"Accept": "application/vnd.github.raw+json"},
+        )
+        text = r.text if r.status_code == 200 else None
+        self.cache.set(key, text or "")
+        return text
 
     def tree(self, full_name: str, default_branch: str) -> TreeListing:
         """A repo's full file listing, one request (#18): `git/trees/{default}?recursive=1`,
