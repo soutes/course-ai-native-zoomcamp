@@ -29,6 +29,7 @@ from portfolio.models import Project, WeeklyReport
 from portfolio.services import render
 from portfolio.services.cache import Cache
 from portfolio.services.github import GitHub, GitHubError
+from portfolio.services.goal_stale_lookup import stale_goal_status_for_project
 from portfolio.services.health import judge_health
 from portfolio.services.lifecycle import apply_transition
 from portfolio.services.momentum import compute_repo_week
@@ -196,6 +197,7 @@ class Command(BaseCommand):
                         persist_repo_week(full_name, week, window, stats)
 
                         stalled = stalled_status_for_project(project, week, tz)
+                        goal_stale = stale_goal_status_for_project(project, week, tz)
 
                         repo = by_full_name.get(full_name)
                         default_branch = repo.default_branch if repo else "main"
@@ -227,6 +229,9 @@ class Command(BaseCommand):
                                 health=health,
                                 previous=previous,
                                 goal=project.goal,
+                                goal_set_at=project.goal_set_at,
+                                weeks_since_goal_set=goal_stale.weeks_since_goal_set,
+                                goal_stale=goal_stale.stale,
                             )
                         )
                         progress.advance(task)

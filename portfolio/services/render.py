@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -124,7 +125,8 @@ def render_warnings(count: int) -> None:
 # --- weekly report (#16) ------------------------------------------------------------
 #
 # Everything below renders `manage.py report`'s retro: four sections always, plus an
-# optional fifth "Goal check" section (#29, D28). `render_report_markdown`
+# optional fifth "Goal check" section (#29, D28) and an optional sixth "Stale goals"
+# section (#30, D29), independent of each other. `render_report_markdown`
 # is pure - plain data in, a markdown string out, no Rich, no Django, no LLM - so the
 # section/never-empty/exactly-one-focus-item rules are testable from fixtures with no
 # console involved. `render_report` is the only impure piece: it wraps that string in
@@ -177,6 +179,25 @@ class RepoReportData:
     the same call site that builds this row - no new query. Read by the
     "Goal check" section below and by `portfolio.coach` for drift judgement;
     never sent to the LLM for a repo where this is empty (D24/D28)."""
+    goal_set_at: datetime | None = None
+    """When `goal` was last set (`Project.goal_set_at`, #10), or `None` when
+    unset (#30, D29) - `report.py` passes `project.goal_set_at` through at the
+    same call site, no new query. Read by the "Stale goals" section below to
+    name how many weeks the goal has stood."""
+    weeks_since_goal_set: int = 0
+    """Whole weeks between `goal_set_at` and the reported week's Monday
+    (`goal_stale.weeks_since_goal_set`, #30) - computed by
+    `goal_stale_lookup.stale_goal_status_for_project` and passed through here,
+    same precomputed-number pattern `weeks_since_last_commit` already uses,
+    since summing `RepoWeek` across the window needs a database query this
+    Django-free module cannot make itself."""
+    goal_stale: bool = False
+    """Whether `goal` is flagged stale this week (`goal_stale.StaleGoalStatus.stale`,
+    #30, D29) - non-empty goal, `weeks_since_goal_set` at or beyond
+    `STALE_GOAL_THRESHOLD_WEEKS`, zero commits summed across the window, and
+    not silenced by a shipped/dropped/paused-in-force status. Computed
+    upstream in `goal_stale_lookup.py` for the same reason
+    `weeks_since_goal_set` is - see that field's docstring."""
 
 
 @dataclass
@@ -468,11 +489,38 @@ def _goal_check_lines(repos: list[RepoReportData], coaching: CoachingResult | No
     return lines
 
 
+def _s_weeks(n: int) -> str:
+    """Pluralizes a bare number for "N week(s)" wording - same rule as `_s`."""
+    return "" if n == 1 else "s"
+
+
+def _stale_goals_lines(repos: list[RepoReportData]) -> list[str]:
+    """One line per repo whose goal is flagged stale this week (#30, D29).
+
+    Purely a filter over `r.goal_stale`, already computed upstream in
+    `goal_stale_lookup.py` (this module stays Django-free, so it cannot sum
+    `RepoWeek` itself - see `RepoReportData.goal_stale`'s docstring). Each
+    line names all three elements the issue's own AC requires: the goal text,
+    the number of weeks since it was set, and the fact that nothing shipped.
+    """
+    lines = []
+    for r in repos:
+        if not r.goal_stale:
+            continue
+        lines.append(
+            f"**{r.repo}** - goal: {r.goal} - unchanged for "
+            f"{r.weeks_since_goal_set} week{_s_weeks(r.weeks_since_goal_set)}, "
+            "nothing shipped in that window"
+        )
+    return lines
+
+
 def render_report_markdown(data: WeeklyReportData) -> str:
     """The retro as plain markdown text: four sections always, plus an optional
-    fifth "Goal check" section (#29, D28). Pure: no Rich, no Django, no LLM,
-    and works with `data.coaching is None` (the default - see
-    `WeeklyReportData`).
+    fifth "Goal check" section (#29, D28) and an optional sixth "Stale goals"
+    section (#30, D29). Pure: no Rich, no Django, no LLM, and works with
+    `data.coaching is None` (the default - see `WeeklyReportData`) - "Stale
+    goals" in particular does not depend on coaching at all (D29).
 
     Every bullet carries a repo name and a number (#16's own AC - "no bare
     adjectives"). "What went wrong" is never empty and "This week's focus"
@@ -480,6 +528,8 @@ def render_report_markdown(data: WeeklyReportData) -> str:
     A week with no tracked repos at all still renders all four sections.
     "Goal check" is entirely absent (no heading) when `_goal_check_lines`
     has nothing to show - see its own docstring for exactly when that is.
+    "Stale goals" is likewise entirely absent when `_stale_goals_lines` has
+    nothing to show - see its own docstring.
     """
     repos = sorted(data.repos, key=lambda r: r.repo)
     new_repos = sorted(data.new_repos, key=lambda nr: nr.created_at)
@@ -527,6 +577,13 @@ def render_report_markdown(data: WeeklyReportData) -> str:
         lines.append("## Goal check")
         lines.append("")
         lines += [f"- {line}" for line in goal_lines]
+        lines.append("")
+
+    stale_goal_lines = _stale_goals_lines(repos)
+    if stale_goal_lines:
+        lines.append("## Stale goals")
+        lines.append("")
+        lines += [f"- {line}" for line in stale_goal_lines]
         lines.append("")
 
     return "\n".join(lines)
