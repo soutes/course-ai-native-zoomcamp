@@ -521,3 +521,63 @@ needs for tests/CI anyway), and merging them is a refactor with no
 acceptance criterion asking for it.
 
 **Applies to:** [#18](https://github.com/soutes/course-ai-native-zoomcamp/issues/18), [#4](https://github.com/soutes/course-ai-native-zoomcamp/issues/4)
+
+---
+
+## D16 - `--pause`'s argument is an ISO date; free-text reasons move to a separate `--reason` flag
+
+**Question:** #19's filed body gives `--pause "back in November"` as its example, then separately
+requires "`--pause` without a parseable date is rejected rather than stored as an open-ended
+pause." Those two lines describe the same single argument two incompatible ways: the example
+reads as free text (matching `--drop "no longer worth it"`, clearly a reason), but the AC requires
+that same argument to be a date the code can parse. "back in November" is not parseable by
+`datetime` without a natural-language date library, and `AGENTS.md` says not to add a dependency
+without asking.
+
+**Decision:** `--pause` takes one required argument, an ISO date (`YYYY-MM-DD`), parsed with
+`datetime.date.fromisoformat` - standard library only. All three flags (`--shipped`, `--pause`,
+`--drop`) additionally accept an optional `--reason "text"` for the free text that becomes
+`Project.status_reason`. The issue's `"back in November"` example is illustrative of the kind of
+text a reason carries, not the literal argument to `--pause`.
+
+**Reason:** Keeps the date-parsing AC satisfiable with the standard library, keeps `--drop`'s and
+`--pause`'s argument handling consistent (both take a reason the same way), and does not read the
+issue's own illustrative example as a literal spec that contradicts the very next bullet in the
+same issue.
+
+**Cost accepted:** None beyond the CLI surface reading `--pause 2026-11-01 --reason "back in
+November"` instead of `--pause "back in November"` - one extra flag to type, not a capability
+loss.
+
+**Applies to:** [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19)
+
+---
+
+## D17 - Re-acking overwrites the single transition record; no multi-entry transition history is built
+
+**Question:** #19's filed body requires "Re-acking an already-shipped project is allowed and
+records a second transition; the history is not overwritten." `Project` (#10) carries exactly one
+set of transition fields - `status`, `status_reason`, `status_changed_at` - not a log table.
+Reading the AC literally (every past transition individually visible later) would mean adding a
+new model and migration, which neither `backlog.md`'s one-line description ("Done when an ended
+project leaves the weekly report and keeps its record") nor the rest of #19's own acceptance
+criteria call for - the closest existing pattern for that shape, `TriageRun`/`TriageDecision`, was
+built for a different feature (#4/#7) and #19 does not ask to extend it.
+
+**Decision:** Re-acking a project overwrites `status`, `status_reason` and `status_changed_at`
+with the new transition's values - it does not error, and it does not preserve the previous
+transition's reason or timestamp anywhere. "Keeps its record" (`backlog.md`) means the `Project`
+row itself is never deleted (`AGENTS.md`: nothing is deleted), not that every past transition
+remains individually queryable. A full multi-entry transition log is out of scope for #19; no
+follow-up issue is filed for it since nothing today asks for it - it can be groomed properly if a
+real need for one shows up.
+
+**Reason:** The model that exists supports "current status, reason, and when it changed," not a
+log. Building a log table is scope invention beyond what #19 or `backlog.md` asks for, and the
+literal AC as filed cannot be satisfied without one.
+
+**Cost accepted:** After several re-acks, only the latest transition's reason and timestamp are
+visible anywhere in the app - the sequence of prior transitions (e.g. paused, then shipped, then
+re-shipped with a different reason) is not recoverable.
+
+**Applies to:** [#19](https://github.com/soutes/course-ai-native-zoomcamp/issues/19)
