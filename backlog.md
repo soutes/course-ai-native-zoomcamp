@@ -103,7 +103,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
   one-day burst and a five-day habit with equal commit counts read differently.
 - [x] **23. Abandoned counter in the header.** ([#23](https://github.com/soutes/course-ai-native-zoomcamp/issues/23))
   `2 projects with no commit for 4+ weeks`. Done when the count appears above the sections.
-- [ ] **35. `report --last`, reprint from storage.** ([#35](https://github.com/soutes/course-ai-native-zoomcamp/issues/35))
+- [x] **35. `report --last`, reprint from storage.** ([#35](https://github.com/soutes/course-ai-native-zoomcamp/issues/35))
   Reprint the most recent report. No network, no LLM, no token. Done when it renders with
   both keys unset.
 
