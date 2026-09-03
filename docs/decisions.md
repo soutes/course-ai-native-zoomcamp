@@ -142,4 +142,4 @@ markdown" as its goal literally states, and a new model/migration. It is the
 only mvp issue that ever holds the full computed picture in one place, so it
 is the only one that can write it down.
 
-**Applies to:** [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16), [#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17), [#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36)
+**Applies to:** [#16](https://github.com/soutes/course-ai-native-zoomcamp/issues/16), [#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17), [#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33), [#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36)
