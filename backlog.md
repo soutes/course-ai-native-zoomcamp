@@ -52,7 +52,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **10. `Project` model and the Django admin.** ([#10](https://github.com/soutes/course-ai-native-zoomcamp/issues/10))
   Repo name, goal, tracked flag, lifecycle status. Done when goals are editable at `/admin/`
   instead of by hand in a config file.
-- [ ] **11. ISO week window helper.** ([#11](https://github.com/soutes/course-ai-native-zoomcamp/issues/11))
+- [x] **11. ISO week window helper.** ([#11](https://github.com/soutes/course-ai-native-zoomcamp/issues/11))
   Monday 00:00 to Sunday 23:59 local, plus parsing of `2026-W36`. Done when the boundaries are
   unit-tested, including the year-end rollover.
 - [ ] **12. Fetch a week of commits per repo.** ([#12](https://github.com/soutes/course-ai-native-zoomcamp/issues/12))
