@@ -126,4 +126,5 @@ WEEKLY_CACHE_DIR = Path(os.environ.get("WEEKLY_CACHE_DIR", BASE_DIR / ".cache"))
 # Runtime LLM. OpenAI-compatible; Groq by default. Never an Anthropic hardcode.
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
-LLM_API_KEY = os.environ.get("GROQ_API_KEY", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_TIMEOUT_SECONDS = float(os.environ.get("LLM_TIMEOUT_SECONDS", "10"))
