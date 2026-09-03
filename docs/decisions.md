@@ -287,3 +287,42 @@ satisfied by the pre-existing `/` page, not by the fuller picture the
 wording evokes. Flagged to the orchestrator, not papered over.
 
 **Applies to:** [#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38), [#40](https://github.com/soutes/course-ai-native-zoomcamp/issues/40)
+
+---
+
+## D10 - Branch protection on `main` is a standing manual action for the owner, not scoped into #39
+
+**Question:** #39's original issue body listed branch protection (CI
+required to pass before a PR can merge) as an acceptance criterion,
+verified by screenshot or `gh api repos/{owner}/{repo}/branches/main/
+protection`. `backlog.md`'s own note on #39 already says branch protection
+"is a repo-settings change the owner makes by hand, not an agent write,"
+and #39's own Constraints already forbade automating it via `gh api` write
+calls - but that leaves an acceptance criterion asking for an end state no
+agent is allowed to produce, which the issue can never close on its own
+merits.
+
+**Decision:** Branch protection moves out of #39's acceptance criteria
+entirely, into out of scope. No agent (this session or any future one)
+makes the write call that changes `main`'s branch protection settings,
+with or without a token, following D6's precedent for repo-settings and
+account-affecting writes. #39 documents the exact click-path for the owner
+(Settings -> Branches -> add a protection rule for `main` -> require status
+checks to pass -> select the `CI` workflow) inside the issue, but does not
+carry enabling it as a checkable criterion. It is a standing manual action
+for the owner, not a blocking follow-up issue - same treatment as D6's
+`--apply` verification and D9's live `report` run.
+
+**Reason:** An acceptance criterion an agent structurally cannot satisfy
+either blocks the issue from ever closing cleanly or invites an
+unauthorized write to close it. D6 already establishes the pattern this
+project uses for repo-settings-affecting actions: they wait for the owner,
+present, choosing to do it - extended here from account writes (`--apply`)
+to repo-settings writes (branch protection), the same category of risk.
+
+**Cost accepted:** #39 closes on the workflow step and README badge alone;
+branch protection is not actually enabled by the issue closing - that
+remains true only once the owner clicks it by hand. Same acknowledged gap
+as D6/D9's deferred manual verification.
+
+**Applies to:** [#39](https://github.com/soutes/course-ai-native-zoomcamp/issues/39)
