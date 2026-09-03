@@ -164,6 +164,13 @@ class Command(BaseCommand):
 
         render.render_report(data)
 
+        if options["repo"]:
+            # A --repo run is a narrowed view, not the week's full picture - #17/#36
+            # trust WeeklyReport to hold every tracked repo (D5). Persisting a
+            # single-repo snapshot here would either create a partial row or
+            # silently clobber an existing full-portfolio one for the same week.
+            return
+
         WeeklyReport.objects.update_or_create(
             week=week,
             defaults={"markdown": markdown, "data": render.build_report_snapshot(data)},

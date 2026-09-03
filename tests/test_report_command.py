@@ -188,12 +188,72 @@ def test_repo_flag_limits_the_report_to_one_repo(monkeypatch, settings, tmp_path
     )
     _install_fake_gh(monkeypatch, fake_gh)
 
+    out_file = tmp_path / "one-repo.md"
+    call_command("report", "--week", WEEK, "--repo", "me/demo-one", "--out", str(out_file))
+
+    content = out_file.read_text(encoding="utf-8")
+    assert "me/demo-one" in content
+    assert "me/demo-two" not in content
+    assert "commits_in_window me/demo-two" not in fake_gh.calls
+
+
+@pytest.mark.django_db
+def test_repo_flag_does_not_persist_a_weekly_report(monkeypatch, settings, tmp_path):
+    """A --repo run is a narrowed view, not the week's full picture (D5) -
+    #17/#36 trust WeeklyReport to hold every tracked repo. It must not create
+    a partial row for a week that has none yet."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo-one", status=Project.Status.ACTIVE)
+    Project.objects.create(repo="me/demo-two", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/demo-one"), make_gh_repo("me/demo-two")])
+    _install_fake_gh(monkeypatch, fake_gh)
+
     call_command("report", "--week", WEEK, "--repo", "me/demo-one")
 
-    row = WeeklyReport.objects.get(week=WEEK)
-    assert "me/demo-one" in row.markdown
-    assert "me/demo-two" not in row.markdown
-    assert "commits_in_window me/demo-two" not in fake_gh.calls
+    assert not WeeklyReport.objects.filter(week=WEEK).exists()
+
+
+@pytest.mark.django_db
+def test_repo_flag_does_not_overwrite_an_existing_full_portfolio_report(
+    monkeypatch, settings, tmp_path
+):
+    """A prior full-portfolio run's WeeklyReport row for the week must survive
+    a later --repo-scoped run untouched - it must not be clobbered with a
+    single-repo snapshot."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo-one", status=Project.Status.ACTIVE)
+    Project.objects.create(repo="me/demo-two", status=Project.Status.ACTIVE)
+
+    full_gh = FakeGitHub(
+        repos=[make_gh_repo("me/demo-one"), make_gh_repo("me/demo-two")],
+        commits={
+            "me/demo-one": [make_commit("s1", day=1)],
+            "me/demo-two": [make_commit("s2", day=1)],
+        },
+    )
+    _install_fake_gh(monkeypatch, full_gh)
+    call_command("report", "--week", WEEK)
+
+    original = WeeklyReport.objects.get(week=WEEK)
+    original_markdown = original.markdown
+    original_data = original.data
+    original_generated_at = original.generated_at
+
+    narrowed_gh = FakeGitHub(
+        repos=[make_gh_repo("me/demo-one"), make_gh_repo("me/demo-two")],
+        commits={"me/demo-one": [make_commit("s1", day=1), make_commit("s3", day=3)]},
+    )
+    _install_fake_gh(monkeypatch, narrowed_gh)
+    call_command("report", "--week", WEEK, "--repo", "me/demo-one")
+
+    unchanged = WeeklyReport.objects.get(week=WEEK)
+    assert unchanged.markdown == original_markdown
+    assert unchanged.data == original_data
+    assert unchanged.generated_at == original_generated_at
+    assert "me/demo-two" in unchanged.markdown  # still the full picture, not narrowed
 
 
 @pytest.mark.django_db
