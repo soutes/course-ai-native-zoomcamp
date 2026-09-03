@@ -889,3 +889,41 @@ just to try the app.
 to rename it to `LLM_API_KEY` - acceptable pre-MVP-completion, no deployed instance exists yet.
 
 **Applies to:** [#24](https://github.com/soutes/course-ai-native-zoomcamp/issues/24), [#2](https://github.com/soutes/course-ai-native-zoomcamp/issues/2)
+
+---
+
+## D24 - #25's prompt carries commit subjects and diffstat numbers only; goal text stays out until #29
+
+**Question:** #25's filed acceptance criteria said "the prompt carries, per repo: the goal,
+commit **subjects**, and diffstat **numbers**." But `docs/privacy.md` (D14) already states
+plainly, for exactly this feature, that what is sent is "commit subjects and diffstat numbers ...
+Nothing else," lists "goal text" under "What is never sent," and says goal text is sent only once
+goal drift (#29, Phase 5, unbuilt) ships - at which point `docs/privacy.md` itself must be
+updated to cover it. `AGENTS.md`'s Determinism rule and `SPEC.md` section 4b agree: both name
+"commit subjects and diffstat numbers," never a goal. Separately, `portfolio/services/render.py`'s
+`RepoReportData` (what #25 is constrained to build the prompt from, fetching nothing new) has no
+`goal` field at all - `Project.goal` exists on the model but was never threaded through to the
+report's data shape, so satisfying the AC as filed would mean #25 quietly adding a new field and a
+new query, which contradicts its own Constraints ("fetches nothing new").
+
+**Decision:** #25's prompt carries, per repo: the repo name, silent-or-not plus commit count,
+commit subjects (capped), and diffstat numbers (lines added/removed, files touched) - exactly what
+`docs/privacy.md` already commits to and exactly what `RepoReportData` already holds. No goal text.
+Sending a project's goal to the LLM is #29's job (goal drift), not #25's - #29 already carries the
+obligation to update `docs/privacy.md` when it ships (D14). #25's grooming pass removed "the goal"
+from its acceptance criteria and Constraints rather than have it silently dropped or, worse,
+implemented and shipping goal text a week before the privacy document says it does.
+
+**Reason:** `docs/privacy.md` is the document a reader is pointed to for exactly this question
+("what leaves the machine when the LLM layer is on") and it gives one unambiguous answer, written
+after #25 was first filed. Two documents cannot both be authoritative about the same request body;
+`decisions.md`/`privacy.md`'s explicit, reasoned answer wins over an unreviewed line in #25's
+original issue text, per `docs/process.md` ("do not reopen a decision without changing it here
+first" - the reverse also holds: an issue does not silently reopen a decision already on record).
+
+**Cost accepted:** None - #25 was never going to be able to send `Project.goal` without first
+adding a field to `RepoReportData` and a query for it, which its own Constraints already forbid;
+this only removes an AC that could not have been implemented as filed without contradicting either
+`docs/privacy.md` or #25's own "fetches nothing new" rule.
+
+**Applies to:** [#25](https://github.com/soutes/course-ai-native-zoomcamp/issues/25), [#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29)
