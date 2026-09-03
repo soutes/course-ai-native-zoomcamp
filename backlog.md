@@ -71,7 +71,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [ ] **17. Retro web page.** ([#17](https://github.com/soutes/course-ai-native-zoomcamp/issues/17))
   A Django view and template for one week's retro, with a list of past weeks. Done when the
   same report readable in the terminal is readable at `/retro/2026-W36/`.
-- [ ] **33. New repos this week.** ([#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33))
+- [x] **33. New repos this week.** ([#33](https://github.com/soutes/course-ai-native-zoomcamp/issues/33))
   A repo created during the reported week gets its own callout. Done when a week with a new
   repo says so, and a week without one shows nothing.
 - [ ] **36. Current-week dashboard page.** ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
