@@ -793,3 +793,61 @@ worked example by one dropped character. Nothing else about the line's
 wording, placement or content changes.
 
 **Applies to:** [#23](https://github.com/soutes/course-ai-native-zoomcamp/issues/23)
+
+---
+
+## D22 - #35's `--last` bypasses the GITHUB_TOKEN/USER/EMAILS check by moving it, not skipping it after the fact; "most recent" means most recently generated, not the highest week label
+
+**Question:** #35's filed body asks for `report --last` to reprint the most recent `WeeklyReport`
+row with "no network, no LLM, no token," but `report.py`'s `handle()` checks
+`GITHUB_USER`/`GITHUB_TOKEN`/`GITHUB_EMAILS` unconditionally in its first ten lines, before any
+option is even read - `--refresh`, `--repo` and every other flag are already downstream of that
+check. As filed, the AC "it works with `GITHUB_TOKEN` unset" cannot be satisfied without a code
+change to `handle()` itself, which the issue's Constraints ("this task adds no new data source")
+could be misread as ruling out. Separately, #35 never says what "most recent" means. `WeeklyReport`
+is unique on `week` and `Meta.ordering = ["-week"]` (highest week label first) - but a report is
+also re-run out of order in practice (e.g. backfilling an older week, or `--repo` narrowing), so the
+row with the highest `week` label is not always the row that was written most recently. Both
+readings are defensible and produce different output when reports are generated out of order.
+Third, several ACs as filed (coaching reprinted from storage, a `--no-llm`-produced report reprints
+without coaching sections) assume Phase 4 (#24-28, coaching) and #27 (`--no-llm`) already exist -
+neither does yet (`Phase 3`, this issue, and `Phase 4` are both still open; `render.py`'s own
+docstring says `coaching` is "always `None` today"). An issue cannot be tested against
+infrastructure that is not built.
+
+**Decision:**
+1. The `GITHUB_USER`/`GITHUB_TOKEN`/`GITHUB_EMAILS` check moves inside `handle()` to run only when
+   `options["last"]` is falsy - `--last` returns before that check is reached, not after it, so no
+   token/user/email is read, required, or referenced on that path at all. This is real code that
+   the engineer must write, not an existing branch the issue skips.
+2. "Most recent" means **the `WeeklyReport` row with the greatest `generated_at`** (when it was
+   last saved to the database), not the greatest `week` label. `generated_at` is `auto_now=True`
+   (already there), so no new field is needed - the query is
+   `WeeklyReport.objects.order_by("-generated_at").first()`. This matches the issue's own framing
+   ("reprint the most recent report... so the Monday retro is readable on a plane") - a person
+   wants what they last generated, not necessarily the calendar-latest week, since `report` can be
+   re-run for an older week (backfill) after a newer one already ran.
+3. The coaching-related ACs are satisfied structurally, not by new code: `WeeklyReport.markdown`
+   already holds the exact printed text (coaching section present or absent, whatever `render.py`
+   produced at generation time), and `--last` only ever prints that stored string back - it never
+   calls `render.render_report_markdown` or anything in `portfolio/services/render.py` again. That
+   means "coaching is reprinted from storage, never regenerated" and "a `--no-llm` report reprints
+   without coaching" hold automatically once `--last` exists, for free, before #24-28/#27 are ever
+   built - there is nothing coaching-specific to implement in #35. The test for #35 (this repo,
+   today) exercises this with `coaching = None` (the only state that exists); it does not need to
+   wait on Phase 4 to be written or to pass.
+
+**Reason:** An acceptance criterion an agent cannot satisfy without a named code change either
+blocks the issue or invites the engineer to guess whether the Constraints forbid that change - D15,
+D18 and D19 hit the same shape of problem in other issues and the fix each time was to name the real
+change explicitly rather than leave it implicit. "Most recent" needs one answer for the same reason
+D16 needed one for `--pause`'s argument: two readings that diverge on real data cannot both be
+"the" acceptance criterion. Grounding the coaching ACs in what `render.py` already guarantees (full
+markdown stored, verbatim reprint) means #35 does not have to fake or stub Phase 4 to be
+implementable now, and nothing about it will need revisiting once #24-28 land - the design already
+covers that case.
+
+**Cost accepted:** None beyond the `handle()` reordering itself, which #35 was always going to need
+to satisfy its own "works with both keys unset" AC as filed.
+
+**Applies to:** [#35](https://github.com/soutes/course-ai-native-zoomcamp/issues/35)
