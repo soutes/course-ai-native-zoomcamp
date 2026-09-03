@@ -86,6 +86,34 @@ class RepoWeek(models.Model):
         return f"{self.repo} {self.week}"
 
 
+class WeeklyReport(models.Model):
+    """One rendered weekly retrospective (#16), so #17 and #36 can render later
+    with no GitHub call (D5 in docs/decisions.md).
+
+    Unique on `week` - re-running `report` for the same week updates this row
+    instead of creating a duplicate, the same rule `RepoWeek` follows. Holds
+    the exact markdown the command printed plus a JSON snapshot of the data
+    that markdown was built from: per-repo mid-flight work (#15), the
+    new-repos-this-week list (#33), and the single focus item. Momentum
+    numbers (commits, lines, etc.) are **not** duplicated here - `RepoWeek`
+    rows for the same (repo, week) are referenced instead.
+    """
+
+    week = models.CharField(max_length=8, unique=True, help_text='ISO week label, e.g. "2026-W36"')
+    markdown = models.TextField(help_text="The exact markdown the command printed/wrote to --out.")
+    data = models.JSONField(
+        default=dict,
+        help_text="Snapshot: per-repo mid-flight work, new-repos-this-week, and the focus item.",
+    )
+    generated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-week"]
+
+    def __str__(self) -> str:
+        return f"WeeklyReport {self.week}"
+
+
 class TriageRun(models.Model):
     """One applied `triage --apply`. History, never overwritten."""
 
