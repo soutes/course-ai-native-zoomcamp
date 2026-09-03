@@ -118,7 +118,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **26. Strict JSON with per-repo fallback.** ([#26](https://github.com/soutes/course-ai-native-zoomcamp/issues/26))
   A malformed or missing key degrades one repo, never the whole report. Done when a corrupted
   response still renders a complete report.
-- [ ] **27. `--no-llm` flag.** ([#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27))
+- [x] **27. `--no-llm` flag.** ([#27](https://github.com/soutes/course-ai-native-zoomcamp/issues/27))
   Full deterministic report with zero API dependency. Done when the report renders with the
   key unset.
 - [ ] **28. The single forward-looking focus item.** ([#28](https://github.com/soutes/course-ai-native-zoomcamp/issues/28))
