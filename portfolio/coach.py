@@ -185,7 +185,9 @@ _SYSTEM_PROMPT = (
     "starting a project before finishing another, going silent on one repo "
     "while another gets all the attention, or working in short bursts versus "
     "a steady rhythm. Never suggest a code change, a refactor, or comment on "
-    "implementation details you cannot see."
+    "implementation details you cannot see. Phrase each repo's advice as "
+    "something to do in the coming week, not a recap of the week that just "
+    "ended."
 )
 
 

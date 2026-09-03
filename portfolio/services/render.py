@@ -337,10 +337,9 @@ def _doing_lines(repos: list[RepoReportData], new_repos: list[NewRepo]) -> list[
     return lines
 
 
-def _focus_item_text(repos: list[RepoReportData]) -> str:
-    """The single deterministic focus item (#16's AC; #28's future LLM version
-    replaces this, still capped at one - see docs/decisions.md's reasoning for
-    why one is enforced in code, not requested of a model).
+def _deterministic_focus_sentence(repos: list[RepoReportData]) -> tuple[str, str | None]:
+    """The existing #16 deterministic sentence, plus which repo it names (or
+    `None` for the "0 tracked repos" case, which names no repo).
 
     Priority: a repo silent this week (worst weeks-since-last-commit first,
     `None` - never committed - ranks worst) > the oldest open branch/PR in the
@@ -348,7 +347,10 @@ def _focus_item_text(repos: list[RepoReportData]) -> str:
     the least of this week's commits, to keep the weakest link visible.
     """
     if not repos:
-        return "Track a project this week - nothing is being watched yet (0 tracked repos)."
+        return (
+            "Track a project this week - nothing is being watched yet (0 tracked repos).",
+            None,
+        )
 
     silent = [r for r in repos if r.commits == 0]
     if silent:
@@ -361,12 +363,15 @@ def _focus_item_text(repos: list[RepoReportData]) -> str:
         worst = min(silent, key=rank)
         if worst.weeks_since_last_commit is None:
             return (
-                f"Make the first commit to **{worst.repo}** this week - it has 0 commits on record."
+                f"Make the first commit to **{worst.repo}** this week - "
+                "it has 0 commits on record.",
+                worst.repo,
             )
         return (
             f"Get **{worst.repo}** committing again this week - it has been "
             f"{worst.weeks_since_last_commit} week{_s(worst.weeks_since_last_commit)} "
-            "since its last commit."
+            "since its last commit.",
+            worst.repo,
         )
 
     mid_flight: list[tuple[int, str, str]] = []
@@ -389,9 +394,10 @@ def _focus_item_text(repos: list[RepoReportData]) -> str:
             )
     if mid_flight:
         mid_flight.sort(key=lambda t: (-t[0], t[1]))
-        _, _, desc = mid_flight[0]
+        _, repo, desc = mid_flight[0]
         return (
-            f"Merge or close {desc} this week - it is the oldest mid-flight work in the portfolio."
+            f"Merge or close {desc} this week - it is the oldest mid-flight work in the portfolio.",
+            repo,
         )
 
     total = sum(r.commits for r in repos)
@@ -399,8 +405,33 @@ def _focus_item_text(repos: list[RepoReportData]) -> str:
     return (
         f"Keep the momentum on **{weakest.repo}** this week - it had only "
         f"{weakest.commits} commit{_s(weakest.commits)}, the least of the {len(repos)} "
-        f"tracked repos ({total} commits total)."
+        f"tracked repos ({total} commits total).",
+        weakest.repo,
     )
+
+
+def _focus_item_text(repos: list[RepoReportData], coaching: CoachingResult | None = None) -> str:
+    """The single focus item (#16, extended by #28/D27).
+
+    Which repo is the focus is always #16's existing deterministic priority
+    algorithm (`_deterministic_focus_sentence`) - `coaching` never changes the
+    pick, only the wording of the line about the repo already chosen (D27
+    point 1/2). When `coaching` is not `None` and the selected repo has a
+    usable entry in `coaching.advice` (present, not in `coaching.unavailable`),
+    the line is that advice text wrapped in a fixed template naming the repo.
+    Otherwise (`coaching is None`, or the repo missing from `advice`, or in
+    `unavailable`) this renders today's unchanged deterministic sentence -
+    never a "focus needs the LLM" placeholder (D27 point 4).
+    """
+    sentence, repo = _deterministic_focus_sentence(repos)
+    if coaching is None or repo is None:
+        return sentence
+
+    advice = coaching.advice.get(repo)
+    if advice is None or repo in coaching.unavailable:
+        return sentence
+
+    return f"This week: **{repo}** - {advice}"
 
 
 def render_report_markdown(data: WeeklyReportData) -> str:
@@ -451,7 +482,7 @@ def render_report_markdown(data: WeeklyReportData) -> str:
 
     lines.append("## This week's focus")
     lines.append("")
-    lines.append(_focus_item_text(repos))
+    lines.append(_focus_item_text(repos, data.coaching))
     lines.append("")
 
     return "\n".join(lines)
@@ -512,5 +543,5 @@ def build_report_snapshot(data: WeeklyReportData) -> dict:
             {"name": nr.name, "created_at": nr.created_at.isoformat(), "commits": nr.commits}
             for nr in sorted(data.new_repos, key=lambda nr: nr.created_at)
         ],
-        "focus": _focus_item_text(repos),
+        "focus": _focus_item_text(repos, data.coaching),
     }
