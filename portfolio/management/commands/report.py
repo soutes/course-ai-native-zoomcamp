@@ -28,6 +28,7 @@ from portfolio.services.lifecycle import apply_transition
 from portfolio.services.momentum import compute_repo_week
 from portfolio.services.new_repos import new_repos_this_week
 from portfolio.services.repoweek import persist_repo_week
+from portfolio.services.repoweek_lookup import previous_momentum_for_repo
 from portfolio.services.shipped import AUTO_PREFIX, detect_shipped
 from portfolio.services.stalled_lookup import stalled_status_for_project
 from portfolio.services.week import week_label, week_window
@@ -148,6 +149,7 @@ class Command(BaseCommand):
                             lambda c, fn=full_name: gh.commit_diffstat(fn, c.sha),
                             tz,
                         )
+                        previous = previous_momentum_for_repo(full_name, week)
                         persist_repo_week(full_name, week, window, stats)
 
                         stalled = stalled_status_for_project(project, week, tz)
@@ -180,6 +182,7 @@ class Command(BaseCommand):
                                 description=repo.description if repo else None,
                                 commit_subjects=commit_subjects,
                                 health=health,
+                                previous=previous,
                             )
                         )
                         progress.advance(task)

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from portfolio.services.week import week_label, week_window
+from portfolio.services.week import previous_week_label, week_label, week_window
 
 
 def test_week_window_2026_w36():
@@ -83,3 +83,27 @@ def test_explicit_tzinfo_is_honoured():
     start, end = week_window("2026-W36", tz=tz)
     assert start.tzinfo is tz
     assert end.tzinfo is tz
+
+
+# --- previous_week_label (#21, D19) -------------------------------------------------
+
+
+def test_previous_week_label_within_the_same_year():
+    assert previous_week_label("2026-W36") == "2026-W35"
+
+
+def test_previous_week_label_crosses_a_year_boundary():
+    # 2024 has 52 ISO weeks - the week before 2025-W01 is 2024-W52, not "2025-W00".
+    assert previous_week_label("2025-W01") == "2024-W52"
+
+
+def test_previous_week_label_crosses_into_a_53_week_year():
+    # 2026 has 53 ISO weeks (Jan 1 2026 is a Thursday) - the week before
+    # 2027-W01 is 2026-W53, not W52 - the true calendar-previous week, not a
+    # naive "always 52" assumption.
+    assert previous_week_label("2027-W01") == "2026-W53"
+
+
+def test_previous_week_label_malformed_input_raises_value_error():
+    with pytest.raises(ValueError, match=r"not-a-week"):
+        previous_week_label("not-a-week")

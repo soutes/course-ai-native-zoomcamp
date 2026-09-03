@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from portfolio.services.health import HealthSignals
+from portfolio.services.momentum_delta import PreviousMomentum
 from portfolio.services.render import (
     RepoReportData,
     WeeklyReportData,
@@ -459,6 +460,118 @@ def test_unhealthy_silent_repo_gets_both_silence_and_health_lines():
     wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
     assert "6 week" in wrong_section  # the existing silence line, untouched
     assert "missing" in wrong_section  # plus the health line
+
+
+# --- week-over-week deltas (#21) ----------------------------------------------------
+
+
+def test_header_shows_both_this_week_and_last_week_labels():
+    data = WeeklyReportData(week="2026-W36", repos=[make_repo()])
+    md = render_report_markdown(data)
+
+    assert "2026-W36" in md
+    assert "2026-W35" in md
+    assert "this week" in md
+    assert "last week" in md
+
+
+def test_header_crosses_a_year_boundary():
+    data = WeeklyReportData(week="2027-W01", repos=[make_repo()])
+    md = render_report_markdown(data)
+
+    assert "2027-W01" in md
+    assert "2026-W53" in md  # 2026 has 53 ISO weeks - see test_week.py
+
+
+def test_went_well_line_shows_last_week_value_for_every_momentum_number():
+    previous = PreviousMomentum(
+        commits=4, active_days=1, lines_added=30, lines_removed=5, files_touched=2
+    )
+    repo = make_repo(
+        repo="me/busy",
+        commits=18,
+        active_days=4,
+        lines_added=300,
+        lines_removed=50,
+        files_touched=9,
+        previous=previous,
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "18 commit" in well_section
+    assert "(last week: 4)" in well_section
+    assert "(last week: 1)" in well_section
+    assert "(last week: 30)" in well_section
+    assert "(last week: 5)" in well_section
+    assert "(last week: 2)" in well_section
+
+
+def test_went_well_line_no_previous_row_reads_first_week_tracked():
+    repo = make_repo(repo="me/new", commits=5, previous=None)
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "(first week tracked)" in well_section
+    assert "(last week: 0)" not in well_section
+
+
+def test_went_well_line_previous_row_of_zero_reads_last_week_zero_not_first_week():
+    previous = PreviousMomentum(
+        commits=0, active_days=0, lines_added=0, lines_removed=0, files_touched=0
+    )
+    repo = make_repo(repo="me/revived", commits=5, previous=previous)
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "(last week: 0)" in well_section
+    assert "(first week tracked)" not in well_section
+
+
+def test_went_wrong_silent_repo_shows_its_commits_delta_too():
+    previous = PreviousMomentum(
+        commits=7, active_days=3, lines_added=50, lines_removed=10, files_touched=4
+    )
+    repo = make_repo(
+        repo="me/quiet", commits=0, weeks_since_last_commit=1, stalled=False, previous=previous
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo]))
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+
+    assert "0 commits this week (last week: 7)" in wrong_section
+
+
+def test_partial_previous_row_still_shows_its_lines_and_files_deltas():
+    previous = PreviousMomentum(
+        commits=90, active_days=5, lines_added=500, lines_removed=200, files_touched=40
+    )
+    repo = make_repo(repo="me/capped-last-week", commits=3, previous=previous)
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "(last week: 500)" in well_section
+    assert "(last week: 200)" in well_section
+    assert "(last week: 40)" in well_section
+
+
+def test_a_drop_carries_no_different_styling_than_a_rise():
+    """No color/symbol/wording marks a decrease differently from an increase -
+    the delta text is the same shape (`(last week: N)`) regardless of direction."""
+    dropped = PreviousMomentum(
+        commits=50, active_days=5, lines_added=900, lines_removed=10, files_touched=30
+    )
+    rose = PreviousMomentum(
+        commits=1, active_days=1, lines_added=5, lines_removed=1, files_touched=1
+    )
+    repo_drop = make_repo(repo="me/dropped", commits=2, previous=dropped)
+    repo_rise = make_repo(repo="me/rose", commits=40, previous=rose)
+    md = render_report_markdown(WeeklyReportData(week="2026-W36", repos=[repo_drop, repo_rise]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "(last week: 50)" in well_section
+    assert "(last week: 1)" in well_section
+    for marker in ("+50", "-50", "↓", "↑", "[red]", "[green]"):
+        assert marker not in well_section
 
 
 def test_truncated_tree_health_produces_no_noise_when_license_and_description_are_fine():

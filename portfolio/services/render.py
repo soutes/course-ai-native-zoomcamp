@@ -11,7 +11,9 @@ from rich.table import Table
 from rich.text import Text
 
 from .health import HealthSignals
+from .momentum_delta import PreviousMomentum, momentum_delta_text
 from .types import Decision, NewRepo, OpenPullRequest, TriagePlan, UnmergedBranch, Verdict
+from .week import previous_week_label
 
 console = Console()
 
@@ -153,6 +155,10 @@ class RepoReportData:
     repo could not be matched to a fetched `Repo`); a healthy `HealthSignals`
     (`missing_labels` empty) and `None` both produce no "went wrong" noise -
     see `_health_lines`."""
+    previous: PreviousMomentum | None = None
+    """This repo's previous-week momentum (#21), or `None` when no
+    `RepoWeek` row is stored for the previous week ("first week tracked").
+    Read by `repoweek_lookup.previous_momentum_for_repo`, not computed here."""
 
 
 @dataclass
@@ -206,11 +212,13 @@ def _went_well_lines(repos: list[RepoReportData]) -> list[str]:
         undercount = " (diffstat capped at 80/week - lines/files undercounted)" if r.partial else ""
         desc = f" - {r.description}" if r.description else ""
         latest = f'; latest commit: "{r.commit_subjects[-1]}"' if r.commit_subjects else ""
+        delta = momentum_delta_text(r.previous)
         lines.append(
-            f"**{r.repo}**{desc} - {r.commits} commit{_s(r.commits)}, "
-            f"{r.active_days} active day{_s(r.active_days)}, "
-            f"+{r.lines_added}/-{r.lines_removed} lines across "
-            f"{r.files_touched} file{_s(r.files_touched)}{undercount}{latest}"
+            f"**{r.repo}**{desc} - {r.commits} commit{_s(r.commits)} {delta.commits}, "
+            f"{r.active_days} active day{_s(r.active_days)} {delta.active_days}, "
+            f"+{r.lines_added} {delta.lines_added}/-{r.lines_removed} {delta.lines_removed} "
+            f"lines across {r.files_touched} file{_s(r.files_touched)} "
+            f"{delta.files_touched}{undercount}{latest}"
         )
     return lines
 
@@ -260,7 +268,8 @@ def _went_wrong_lines(repos: list[RepoReportData]) -> list[str]:
             )
         tag = " - stalled" if r.stalled else ""
         desc = f" - {r.description}" if r.description else ""
-        lines.append(f"**{r.repo}**{desc} - 0 commits this week, {since}{tag}")
+        commits_delta = momentum_delta_text(r.previous).commits
+        lines.append(f"**{r.repo}**{desc} - 0 commits this week {commits_delta}, {since}{tag}")
     return lines + _health_lines(repos)
 
 
@@ -372,7 +381,8 @@ def render_report_markdown(data: WeeklyReportData) -> str:
     repos = sorted(data.repos, key=lambda r: r.repo)
     new_repos = sorted(data.new_repos, key=lambda nr: nr.created_at)
 
-    lines = [f"# Weekly Retro - {data.week}", ""]
+    prior_week = previous_week_label(data.week)
+    lines = [f"# Weekly Retro - {data.week} (this week), vs {prior_week} (last week)", ""]
 
     lines.append("## What went well")
     lines.append("")

@@ -78,3 +78,25 @@ def week_label(window: tuple[datetime, datetime]) -> str:
     start, _end = window
     iso_year, iso_week, _iso_weekday = start.date().isocalendar()
     return f"{iso_year}-W{iso_week:02d}"
+
+
+def previous_week_label(week: str) -> str:
+    """The calendar-previous ISO week label for ``week``, e.g. ``"2026-W36"`` ->
+    ``"2026-W35"``.
+
+    New code for #21 (D19 in docs/decisions.md) - not a reuse of ``week_label``.
+    Resolves ``week``'s Monday the same way `week_window` does
+    (``date.fromisocalendar``), subtracts 7 days, and reads the ISO year/week
+    back off that date via ``.isocalendar()``. That is what makes a year
+    boundary correct for free: the week before ``"2027-W01"`` is
+    ``"2026-W52"``, not ``"2027-W00"``, because the subtracted date's own
+    ISO calendar fields are read fresh rather than decrementing the week
+    number as a plain integer.
+
+    Raises ``ValueError`` (naming the offending input) for the same malformed
+    labels `week_window` rejects.
+    """
+    monday = _monday_from_label(week)
+    prior_monday = monday - timedelta(days=7)
+    iso_year, iso_week, _iso_weekday = prior_monday.isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
