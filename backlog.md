@@ -150,7 +150,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **Linting with `uv run ruff check .` and `uv run ruff format .`.**
 - [x] **README documents setup, the token, and every command.**
 - [ ] **A dashboard page showing the current week, not only the project list.** - now task 36 ([#36](https://github.com/soutes/course-ai-native-zoomcamp/issues/36))
-- [ ] **37. CI on GitHub Actions.** ([#37](https://github.com/soutes/course-ai-native-zoomcamp/issues/37))
+- [x] **37. CI on GitHub Actions.** ([#37](https://github.com/soutes/course-ai-native-zoomcamp/issues/37))
   `uv run pytest` and `uv run ruff check .` on push and pull request. Done when main is green.
 - [ ] **38. `seed_demo` management command.** ([#38](https://github.com/soutes/course-ai-native-zoomcamp/issues/38))
   A realistic portfolio, offline, no token needed. Done when `seed_demo` then `runserver` shows
