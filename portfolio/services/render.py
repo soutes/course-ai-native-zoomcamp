@@ -10,6 +10,7 @@ from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
+from .health import HealthSignals
 from .types import Decision, NewRepo, OpenPullRequest, TriagePlan, UnmergedBranch, Verdict
 
 console = Console()
@@ -146,6 +147,12 @@ class RepoReportData:
     open_pull_requests: list[OpenPullRequest] = field(default_factory=list)
     description: str | None = None
     commit_subjects: list[str] = field(default_factory=list)
+    health: HealthSignals | None = None
+    """Deterministic repo-health signals (#18) - README/tests/CI/license/
+    description. `None` when health was not computed for this row (e.g. the
+    repo could not be matched to a fetched `Repo`); a healthy `HealthSignals`
+    (`missing_labels` empty) and `None` both produce no "went wrong" noise -
+    see `_health_lines`."""
 
 
 @dataclass
@@ -208,6 +215,25 @@ def _went_well_lines(repos: list[RepoReportData]) -> list[str]:
     return lines
 
 
+def _health_lines(repos: list[RepoReportData]) -> list[str]:
+    """One line per repo carrying a definitively missing health signal (#18).
+
+    A repo with `health is None` or with every signal known-present
+    (`missing_labels` empty) contributes nothing - a healthy repo produces no
+    noise here (#18's own AC). A signal left unknown by a truncated tree read
+    is never reported as missing - see `health.HealthSignals.missing_labels`.
+    """
+    lines = []
+    for r in repos:
+        if r.health is None:
+            continue
+        labels = r.health.missing_labels
+        if not labels:
+            continue
+        lines.append(f"**{r.repo}** - missing {', '.join(labels)}")
+    return lines
+
+
 def _went_wrong_lines(repos: list[RepoReportData]) -> list[str]:
     silent = [r for r in repos if r.commits == 0]
     if not silent:
@@ -217,11 +243,12 @@ def _went_wrong_lines(repos: list[RepoReportData]) -> list[str]:
         total = sum(r.commits for r in repos)
         weakest = min(repos, key=lambda r: (r.commits, r.repo))
         weakest_desc = f" - {weakest.description}" if weakest.description else ""
-        return [
+        lines = [
             f"Nothing stalled - every one of the {len(repos)} tracked repos had a commit "
             f"this week, but it was spread thin: **{weakest.repo}**{weakest_desc} carried only "
             f"{weakest.commits} commit{_s(weakest.commits)} of {total} across the portfolio."
         ]
+        return lines + _health_lines(repos)
     lines = []
     for r in silent:
         if r.weeks_since_last_commit is None:
@@ -234,7 +261,7 @@ def _went_wrong_lines(repos: list[RepoReportData]) -> list[str]:
         tag = " - stalled" if r.stalled else ""
         desc = f" - {r.description}" if r.description else ""
         lines.append(f"**{r.repo}**{desc} - 0 commits this week, {since}{tag}")
-    return lines
+    return lines + _health_lines(repos)
 
 
 def _doing_lines(repos: list[RepoReportData], new_repos: list[NewRepo]) -> list[str]:

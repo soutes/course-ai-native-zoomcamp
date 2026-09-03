@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from portfolio.services.health import HealthSignals
 from portfolio.services.render import (
     RepoReportData,
     WeeklyReportData,
@@ -375,3 +376,107 @@ def test_abandoned_count_matches_build_report_snapshot_output():
     snapshot = build_report_snapshot(data)
 
     assert abandoned_count(repos) == abandoned_count(snapshot["repos"]) == 1
+
+
+# --- health signals feed "What went wrong" (#18) ------------------------------------
+
+
+def unhealthy(**overrides) -> HealthSignals:
+    defaults = dict(
+        missing_readme=True,
+        missing_tests=True,
+        missing_ci=True,
+        missing_license=True,
+        missing_description=True,
+    )
+    defaults.update(overrides)
+    return HealthSignals(**defaults)
+
+
+def healthy() -> HealthSignals:
+    return HealthSignals(
+        missing_readme=False,
+        missing_tests=False,
+        missing_ci=False,
+        missing_license=False,
+        missing_description=False,
+    )
+
+
+def test_healthy_repo_produces_no_health_noise_in_went_wrong():
+    repo = make_repo(repo="me/tidy", commits=3, health=healthy())
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "missing" not in wrong_section
+
+
+def test_repo_with_no_health_computed_produces_no_health_noise():
+    repo = make_repo(repo="me/unknown-health", commits=3, health=None)
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "missing" not in wrong_section
+
+
+def test_unhealthy_repo_lists_its_missing_signals_in_went_wrong():
+    repo = make_repo(
+        repo="me/scruffy",
+        commits=3,
+        health=unhealthy(missing_readme=True, missing_ci=True, missing_tests=False),
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "me/scruffy" in wrong_section
+    assert "README" in wrong_section
+    assert "CI" in wrong_section
+    assert "license" in wrong_section
+    assert "description" in wrong_section
+    assert "tests" not in wrong_section.split("me/scruffy")[1].split("\n")[0]
+
+
+def test_unhealthy_repo_flagged_even_when_every_project_moved():
+    """The "nothing stalled, spread thin" fallback line must not swallow health
+    noise for a different, otherwise-fine repo."""
+    repos = [
+        make_repo(repo="me/alpha", commits=20, health=healthy()),
+        make_repo(repo="me/beta", commits=1, health=unhealthy()),
+    ]
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=repos))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "me/beta" in wrong_section
+    assert "missing" in wrong_section
+
+
+def test_unhealthy_silent_repo_gets_both_silence_and_health_lines():
+    repo = make_repo(
+        repo="me/quiet", commits=0, weeks_since_last_commit=6, stalled=True, health=unhealthy()
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "6 week" in wrong_section  # the existing silence line, untouched
+    assert "missing" in wrong_section  # plus the health line
+
+
+def test_truncated_tree_health_produces_no_noise_when_license_and_description_are_fine():
+    """Unknown (truncated-tree) signals are never rendered as missing noise -
+    see `health.judge_health`."""
+    repo = make_repo(
+        repo="me/big-repo",
+        commits=3,
+        health=HealthSignals(
+            missing_readme=None,
+            missing_tests=None,
+            missing_ci=None,
+            missing_license=False,
+            missing_description=False,
+            tree_truncated=True,
+        ),
+    )
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
+    assert "missing" not in wrong_section

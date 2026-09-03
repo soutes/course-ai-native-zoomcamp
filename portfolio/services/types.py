@@ -128,6 +128,23 @@ class OpenPullRequest:
 
 
 @dataclass
+class TreeListing:
+    """One repo's full file listing (#18), from a single
+    `GET /repos/{owner}/{repo}/git/trees/{default}?recursive=1` request.
+
+    ``paths`` are every blob/tree path GitHub returned, forward-slash
+    separated, in whatever order the API gave them - callers filter/search,
+    they do not rely on ordering. ``truncated`` mirrors GitHub's own
+    `truncated` field: true when the tree was too large for one response and
+    is *not* a complete listing - a caller must then treat "not found in
+    `paths`" as unknown, never as "missing" (see `health.judge_health`).
+    """
+
+    paths: list[str]
+    truncated: bool
+
+
+@dataclass
 class NewRepo:
     """One repo created during the reported week - a start, not a finish (#33).
 

@@ -23,6 +23,7 @@ from portfolio.models import Project, WeeklyReport
 from portfolio.services import render
 from portfolio.services.cache import Cache
 from portfolio.services.github import GitHub, GitHubError
+from portfolio.services.health import judge_health
 from portfolio.services.momentum import compute_repo_week
 from portfolio.services.new_repos import new_repos_this_week
 from portfolio.services.repoweek import persist_repo_week
@@ -131,6 +132,13 @@ class Command(BaseCommand):
                         branches = gh.unmerged_branches(full_name, default_branch)
                         prs = gh.open_pull_requests(full_name, user)
 
+                        # #18: repo health signals - only computable when this
+                        # project's repo was actually found among the fetched
+                        # `Repo`s (license/description live there, per D15).
+                        health = (
+                            judge_health(gh.tree(full_name, default_branch), repo) if repo else None
+                        )
+
                         repo_rows.append(
                             render.RepoReportData(
                                 repo=full_name,
@@ -146,6 +154,7 @@ class Command(BaseCommand):
                                 open_pull_requests=prs,
                                 description=repo.description if repo else None,
                                 commit_subjects=commit_subjects,
+                                health=health,
                             )
                         )
                         progress.advance(task)

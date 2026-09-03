@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from .cache import Cache
-from .types import Commit, CommitStat, OpenPullRequest, Repo, UnmergedBranch
+from .types import Commit, CommitStat, OpenPullRequest, Repo, TreeListing, UnmergedBranch
 
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
@@ -269,6 +269,37 @@ class GitHub:
         found = r.status_code == 200 and bool(r.json())
         self.cache.set(key, found)
         return found
+
+    def tree(self, full_name: str, default_branch: str) -> TreeListing:
+        """A repo's full file listing, one request (#18): `git/trees/{default}?recursive=1`,
+        cached like every other read - a re-run costs zero requests.
+
+        An empty default branch (a repo with no commits yet) makes GitHub answer
+        404/409 for this call; that is treated as an empty, non-truncated listing
+        rather than an error, so `health.judge_health` sees "no files at all" and
+        reports every tree-based signal missing - never a raise (#18's AC).
+
+        `truncated` is passed through from GitHub's own response field: when the
+        tree is too large for one response, GitHub does not return every entry,
+        so a caller must not read a missing README/tests/CI path as "not
+        present" - see `TreeListing` and `health.judge_health`.
+        """
+        key = f"TREE {full_name} {default_branch}"
+        hit = self.cache.get(key)
+        if hit is not None:
+            return TreeListing(paths=hit["paths"], truncated=hit["truncated"])
+
+        r = self._get(f"/repos/{full_name}/git/trees/{default_branch}", recursive=1)
+        if r.status_code >= 400:
+            result = {"paths": [], "truncated": False}
+        else:
+            data = r.json()
+            result = {
+                "paths": [e["path"] for e in data.get("tree", []) if e.get("path")],
+                "truncated": bool(data.get("truncated", False)),
+            }
+        self.cache.set(key, result)
+        return TreeListing(paths=result["paths"], truncated=result["truncated"])
 
     # --- mid-flight work (#15) ------------------------------------------------
 

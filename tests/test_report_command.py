@@ -13,7 +13,14 @@ from django.core.management import call_command
 
 from portfolio.management.commands import report as report_cmd
 from portfolio.models import Project, RepoWeek, WeeklyReport
-from portfolio.services.types import Commit, CommitStat, OpenPullRequest, Repo, UnmergedBranch
+from portfolio.services.types import (
+    Commit,
+    CommitStat,
+    OpenPullRequest,
+    Repo,
+    TreeListing,
+    UnmergedBranch,
+)
 from portfolio.services.week import week_label, week_window
 
 UTC_TZ = UTC
@@ -51,12 +58,14 @@ class FakeGitHub:
         diffstats: dict[str, CommitStat] | None = None,
         branches: dict[str, list[UnmergedBranch]] | None = None,
         prs: dict[str, list[OpenPullRequest]] | None = None,
+        trees: dict[str, TreeListing] | None = None,
     ):
         self._repos = repos
         self._commits = commits or {}
         self._diffstats = diffstats or {}
         self._branches = branches or {}
         self._prs = prs or {}
+        self._trees = trees or {}
         self.calls: list[str] = []
 
     def __enter__(self):
@@ -82,6 +91,9 @@ class FakeGitHub:
 
     def open_pull_requests(self, full_name, github_user):
         return list(self._prs.get(full_name, []))
+
+    def tree(self, full_name, default_branch):
+        return self._trees.get(full_name, TreeListing(paths=[], truncated=False))
 
 
 def make_commit(sha, *, day, subject="work") -> Commit:

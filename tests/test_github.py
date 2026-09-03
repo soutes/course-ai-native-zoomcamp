@@ -332,3 +332,67 @@ def test_rerun_hits_the_cache_not_the_network(settings, tmp_path):
 
     assert [c.sha for c in first] == [c.sha for c in second] == ["cached-one"]
     assert calls["n"] == 1
+
+
+# --- GitHub.tree (#18) ---------------------------------------------------------
+
+
+def tree_handler(entries, truncated=False, status=200):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status,
+            json={"tree": [{"path": p, "type": "blob"} for p in entries], "truncated": truncated},
+        )
+
+    return handler
+
+
+def test_tree_returns_every_path_from_the_recursive_response():
+    gh = make_gh(tree_handler(["README.md", "src/main.py", "tests/test_main.py"]))
+
+    result = gh.tree("me/demo", "main")
+
+    assert result.paths == ["README.md", "src/main.py", "tests/test_main.py"]
+    assert result.truncated is False
+
+
+def test_tree_passes_through_the_truncated_flag():
+    gh = make_gh(tree_handler(["a.py"], truncated=True))
+
+    result = gh.tree("me/demo", "main")
+
+    assert result.truncated is True
+
+
+def test_tree_on_empty_default_branch_is_an_empty_non_truncated_listing_not_a_raise():
+    """GitHub 404s `git/trees/{default}` for a repo with no commits yet - #18's
+    AC: this must not raise, and must not look truncated."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    gh = make_gh(handler)
+
+    result = gh.tree("me/empty", "main")
+
+    assert result.paths == []
+    assert result.truncated is False
+
+
+@pytest.mark.django_db
+def test_tree_is_cached_a_rerun_costs_zero_requests(settings, tmp_path):
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={"tree": [{"path": "README.md", "type": "blob"}]})
+
+    cache = Cache("week-2026-W36", enabled=True)
+    gh = make_gh(handler, cache=cache)
+    first = gh.tree("me/demo", "main")
+    gh2 = make_gh(handler, cache=cache)
+    second = gh2.tree("me/demo", "main")
+
+    assert first.paths == second.paths == ["README.md"]
+    assert calls["n"] == 1
