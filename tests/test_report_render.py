@@ -593,3 +593,62 @@ def test_truncated_tree_health_produces_no_noise_when_license_and_description_ar
 
     wrong_section = md.split("## What went wrong")[1].split("## What I'm doing")[0]
     assert "missing" not in wrong_section
+
+
+# --- rhythm phrasing (#22) ----------------------------------------------------------
+
+
+def test_equal_commits_burst_vs_habit_render_differently():
+    """The issue's own acceptance test: two repos with equal commits but
+    active_days 1 vs 5 must produce different rendered lines."""
+    burst = make_repo(repo="me/burst", commits=5, active_days=1)
+    habit = make_repo(repo="me/habit", commits=5, active_days=5)
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[burst, habit]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    burst_line = next(line for line in well_section.splitlines() if "me/burst" in line)
+    habit_line = next(line for line in well_section.splitlines() if "me/habit" in line)
+
+    assert burst_line != habit_line
+    assert "all on one day" in burst_line
+    assert "habit" in habit_line
+
+
+def test_burst_wording_for_one_active_day():
+    repo = make_repo(repo="me/one-day", commits=3, active_days=1)
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+    well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+    assert "all on one day" in well_section
+    assert "habit" not in well_section
+
+
+def test_spread_wording_for_mid_range_active_days():
+    for active_days in (2, 3, 4):
+        repo = make_repo(repo="me/mid", commits=8, active_days=active_days)
+        md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+        well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+        assert f"spread across {active_days} days" in well_section
+        assert "habit" not in well_section
+        assert "all on one day" not in well_section
+
+
+def test_habit_wording_for_five_or_more_active_days():
+    for active_days in (5, 6, 7):
+        repo = make_repo(repo="me/steady", commits=10, active_days=active_days)
+        md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+        well_section = md.split("## What went well")[1].split("## What went wrong")[0]
+
+        assert f"spread across {active_days} days - a habit" in well_section
+        assert "all on one day" not in well_section
+
+
+def test_zero_commits_gets_no_rhythm_wording_anywhere():
+    """A repo with 0 commits renders through `_went_wrong_lines`, which never
+    carries rhythm wording - this must stay true (#22's own AC)."""
+    repo = make_repo(repo="me/silent", commits=0, active_days=0, weeks_since_last_commit=2)
+    md = render_report_markdown(WeeklyReportData(week="2026-W35", repos=[repo]))
+
+    for phrase in ("all on one day", "a habit", "spread across"):
+        assert phrase not in md

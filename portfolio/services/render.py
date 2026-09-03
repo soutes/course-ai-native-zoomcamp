@@ -203,6 +203,27 @@ def _s(n: int) -> str:
     return "" if n == 1 else "s"
 
 
+def _rhythm_phrase(active_days: int) -> str:
+    """Categorize a repo's rhythm from its `active_days` count alone (#22, D20).
+
+    Thresholds and wording live here, in one place, so `_went_well_lines`
+    never duplicates them inline:
+    - 1 active day -> **burst** ("all on one day")
+    - 2-4 active days -> neutral **spread** ("spread across N days") - 2 and 3
+      are deliberately not split into their own labels
+    - 5+ active days -> **habit** ("spread across N days - a habit")
+
+    Only called for repos with `commits > 0` (`_went_well_lines` filters
+    silent repos out before calling this) - a repo with 0 commits never
+    reaches here and gets no rhythm wording anywhere.
+    """
+    if active_days == 1:
+        return "all on one day"
+    if active_days >= 5:
+        return f"spread across {active_days} days - a habit"
+    return f"spread across {active_days} days"
+
+
 def _went_well_lines(repos: list[RepoReportData]) -> list[str]:
     moved = [r for r in repos if r.commits > 0]
     if not moved:
@@ -213,8 +234,9 @@ def _went_well_lines(repos: list[RepoReportData]) -> list[str]:
         desc = f" - {r.description}" if r.description else ""
         latest = f'; latest commit: "{r.commit_subjects[-1]}"' if r.commit_subjects else ""
         delta = momentum_delta_text(r.previous)
+        rhythm = _rhythm_phrase(r.active_days)
         lines.append(
-            f"**{r.repo}**{desc} - {r.commits} commit{_s(r.commits)} {delta.commits}, "
+            f"**{r.repo}**{desc} - {rhythm}, {r.commits} commit{_s(r.commits)} {delta.commits}, "
             f"{r.active_days} active day{_s(r.active_days)} {delta.active_days}, "
             f"+{r.lines_added} {delta.lines_added}/-{r.lines_removed} {delta.lines_removed} "
             f"lines across {r.files_touched} file{_s(r.files_touched)} "
