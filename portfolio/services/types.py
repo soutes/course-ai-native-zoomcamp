@@ -75,6 +75,23 @@ class Commit:
 
 
 @dataclass
+class CommitStat:
+    """The diffstat of one commit, as far as the weekly report cares (#13).
+
+    ``files_changed`` counts every entry GitHub's `files` list returns, including
+    binary files and pure renames - those carry no textual diff but are still a
+    file touched. ``additions``/``deletions`` come straight from GitHub's own
+    per-commit `stats`, which is already 0/0 for a file with no textual diff, so
+    nothing here needs to inspect a `patch` that might not exist.
+    """
+
+    sha: str
+    additions: int
+    deletions: int
+    files_changed: int
+
+
+@dataclass
 class Decision:
     """Triage's call on one repo, with the reasons that produced it."""
 

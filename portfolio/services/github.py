@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .cache import Cache
-from .types import Commit, Repo
+from .types import Commit, CommitStat, Repo
 
 API = "https://api.github.com"
 LAST_PAGE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
@@ -226,6 +226,27 @@ class GitHub:
             data = r.json()
         self.cache.set(key, data)
         return data
+
+    def commit_diffstat(self, full_name: str, sha: str) -> CommitStat:
+        """One commit's added/removed lines and files touched (#13).
+
+        `GET /repos/{owner}/{repo}/commits/{sha}` - cached like every other read,
+        so re-fetching the same commit's diffstat (a re-run of the same week)
+        costs nothing after the first call. `stats` and `files` are read
+        defensively (`or {}`/`or []`): GitHub omits `stats` for some odd repo
+        states, and a commit touching only binary/renamed files still returns
+        `stats.additions`/`stats.deletions` as 0 rather than omitting them, so
+        totals stay correct without ever needing to look at a `patch`.
+        """
+        data = self._cached_json(f"/repos/{full_name}/commits/{sha}")
+        stats = data.get("stats") or {}
+        files = data.get("files") or []
+        return CommitStat(
+            sha=sha,
+            additions=stats.get("additions", 0),
+            deletions=stats.get("deletions", 0),
+            files_changed=len(files),
+        )
 
     def has_readme(self, full_name: str) -> bool:
         key = f"README {full_name}"

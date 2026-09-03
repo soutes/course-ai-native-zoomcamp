@@ -49,6 +49,43 @@ class Project(models.Model):
         return self.status != self.Status.PAUSED
 
 
+class RepoWeek(models.Model):
+    """One tracked repo's momentum for one ISO week (#13).
+
+    The six numbers the retro argues from, computed deterministically by
+    `portfolio/services/momentum.py` and written here so later weeks can
+    compare against a stored row instead of recomputing history. Unique on
+    (repo, week) - re-running the same week updates this row, never a
+    duplicate.
+    """
+
+    repo = models.CharField(max_length=140, help_text="owner/name on GitHub")
+    week = models.CharField(max_length=8, help_text='ISO week label, e.g. "2026-W36"')
+    window_start = models.DateTimeField(help_text="Monday 00:00:00, local time")
+    window_end = models.DateTimeField(help_text="Sunday 23:59:59.999999, local time")
+
+    commits = models.PositiveIntegerField(default=0)
+    active_days = models.PositiveSmallIntegerField(default=0)
+    lines_added = models.PositiveIntegerField(default=0)
+    lines_removed = models.PositiveIntegerField(default=0)
+    files_touched = models.PositiveIntegerField(default=0)
+    partial = models.BooleanField(
+        default=False,
+        help_text="Diffstat cap (D2) exceeded - lines/files columns are an undercount.",
+    )
+
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["repo", "week"], name="unique_repo_week"),
+        ]
+        ordering = ["repo", "week"]
+
+    def __str__(self) -> str:
+        return f"{self.repo} {self.week}"
+
+
 class TriageRun(models.Model):
     """One applied `triage --apply`. History, never overwritten."""
 

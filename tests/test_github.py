@@ -224,6 +224,94 @@ def test_since_until_are_sent_as_utc_converted_from_local_window():
 # --- caching: a re-run costs zero requests (#5) --------------------------------
 
 
+# --- commit_diffstat (#13) ------------------------------------------------------
+
+
+def raw_commit_detail(sha, *, additions=5, deletions=2, files=None):
+    if files is None:
+        files = [
+            {
+                "filename": "a.py",
+                "additions": additions,
+                "deletions": deletions,
+                "status": "modified",
+            }
+        ]
+    return {
+        "sha": sha,
+        "stats": {"additions": additions, "deletions": deletions, "total": additions + deletions},
+        "files": files,
+    }
+
+
+def test_commit_diffstat_reads_additions_deletions_and_file_count():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/repos/me/demo/commits/abc123"
+        return httpx.Response(200, json=raw_commit_detail("abc123", additions=12, deletions=4))
+
+    gh = make_gh(handler)
+
+    stat = gh.commit_diffstat("me/demo", "abc123")
+
+    assert stat.sha == "abc123"
+    assert stat.additions == 12
+    assert stat.deletions == 4
+    assert stat.files_changed == 1
+
+
+def test_commit_diffstat_handles_binary_or_renamed_files_with_no_textual_diff():
+    """A binary file or pure rename comes back with 0/0 additions/deletions and no
+    `patch` key at all - must not raise, and still counts as a touched file."""
+    files = [
+        {"filename": "image.png", "additions": 0, "deletions": 0, "status": "modified"},
+        {"filename": "old.txt", "additions": 0, "deletions": 0, "status": "renamed"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        detail = raw_commit_detail("bin", additions=0, deletions=0, files=files)
+        return httpx.Response(200, json=detail)
+
+    gh = make_gh(handler)
+
+    stat = gh.commit_diffstat("me/demo", "bin")
+
+    assert stat.additions == 0
+    assert stat.deletions == 0
+    assert stat.files_changed == 2
+
+
+def test_commit_diffstat_missing_stats_or_files_defaults_to_zero():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"sha": "bare"})
+
+    gh = make_gh(handler)
+
+    stat = gh.commit_diffstat("me/demo", "bare")
+
+    assert stat.additions == 0
+    assert stat.deletions == 0
+    assert stat.files_changed == 0
+
+
+@pytest.mark.django_db
+def test_commit_diffstat_is_cached_a_rerun_costs_zero_requests(settings, tmp_path):
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=raw_commit_detail("cached-sha"))
+
+    cache = Cache("week-2026-W36", enabled=True)
+    gh = make_gh(handler, cache=cache)
+    first = gh.commit_diffstat("me/demo", "cached-sha")
+    gh2 = make_gh(handler, cache=cache)
+    second = gh2.commit_diffstat("me/demo", "cached-sha")
+
+    assert first == second
+    assert calls["n"] == 1
+
+
 @pytest.mark.django_db
 def test_rerun_hits_the_cache_not_the_network(settings, tmp_path):
     settings.WEEKLY_CACHE_DIR = tmp_path
