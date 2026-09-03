@@ -63,7 +63,10 @@ Working
 
 - Work [backlog.md](backlog.md) in order, one task per commit. Issue numbers match task
   numbers: task 14 is issue #14.
-- Update the task checkbox in `backlog.md` and close the issue in the same change.
+- The engineer updates the task checkbox in `backlog.md` and comments on the issue
+  saying what was done. The engineer never closes the issue.
+- Only the orchestrator closes an issue, and only after QA posts PASS. See
+  [docs/process.md](docs/process.md).
 - Only mark a task done when it was **verified running**, not when the code was written.
 - This project follows the [DataTalks AI Dev Tools](https://courses.datatalks.club/ai-dev-tools-2026/)
   course pace. Do not jump ahead of the module being taught, even when a later phase is
