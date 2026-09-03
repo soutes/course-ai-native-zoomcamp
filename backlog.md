@@ -163,7 +163,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
   Unblocked now (#13/#16/#36 closed).
 - [x] **41. 403/404/500 error templates.** ([#41](https://github.com/soutes/course-ai-native-zoomcamp/issues/41)) `post-mvp`
   Filed at Gate 6 - a known candidate named in docs/gates.md itself.
-- [ ] **42. Privacy note: what leaves the machine when the LLM layer is on.** ([#42](https://github.com/soutes/course-ai-native-zoomcamp/issues/42)) `post-mvp`
+- [x] **42. Privacy note: what leaves the machine when the LLM layer is on.** ([#42](https://github.com/soutes/course-ai-native-zoomcamp/issues/42)) `post-mvp`
   Filed at Gate 6 - a Gate 7 precondition, named in docs/gates.md itself.
 - [x] **43. Public web view for tracked projects and triage history.** ([#43](https://github.com/soutes/course-ai-native-zoomcamp/issues/43)) `post-mvp`
   Filed at Gate 6 - #36 replaced `/`'s old Project/TriageRun content with the current-week
