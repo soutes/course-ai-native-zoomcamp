@@ -319,6 +319,29 @@ def test_paused_project_is_silenced(monkeypatch, settings, tmp_path):
 
 
 @pytest.mark.django_db
+def test_acked_project_is_absent_from_the_next_report_end_to_end(monkeypatch, settings, tmp_path):
+    """#19 end-to-end: `ack --shipped` on a live Project, then the very next
+    `report` run, with no direct call to `Project.in_weekly_report` in this test.
+    """
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/active", status=Project.Status.ACTIVE)
+    Project.objects.create(repo="me/finished", status=Project.Status.ACTIVE)
+
+    call_command("ack", "me/finished", "--shipped")
+
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/active")])
+    _install_fake_gh(monkeypatch, fake_gh)
+
+    call_command("report", "--week", WEEK)
+
+    row = WeeklyReport.objects.get(week=WEEK)
+    assert "me/active" in row.markdown
+    assert "me/finished" not in row.markdown
+    assert "commits_in_window me/finished" not in fake_gh.calls
+
+
+@pytest.mark.django_db
 def test_out_flag_writes_plain_markdown_to_file(monkeypatch, settings, tmp_path):
     _configure(settings)
     settings.WEEKLY_CACHE_DIR = tmp_path

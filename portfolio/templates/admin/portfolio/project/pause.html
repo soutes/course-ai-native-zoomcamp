@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<p>Pausing:</p>
+<ul>
+  {% for project in projects %}
+    <li>{{ project.repo }}</li>
+  {% endfor %}
+</ul>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="submit" value="Pause">
+</form>
+{% endblock %}
