@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -15,6 +16,14 @@ from .momentum_delta import PreviousMomentum, momentum_delta_text
 from .stalled import STALLED_THRESHOLD_WEEKS
 from .types import Decision, NewRepo, OpenPullRequest, TriagePlan, UnmergedBranch, Verdict
 from .week import previous_week_label
+
+if TYPE_CHECKING:
+    # `portfolio.coach` is the LLM module - `portfolio/services/` imports no Django and
+    # no LLM at runtime (AGENTS.md, Layering). This import only exists for type
+    # checkers; `CoachingResult` is referenced below as a string annotation so no
+    # runtime import of `coach.py` (and therefore no `httpx`/Django settings) happens
+    # here. `coach.py` does the same in reverse for `WeeklyReportData`/`RepoReportData`.
+    from portfolio.coach import CoachingResult
 
 console = Console()
 
@@ -166,17 +175,20 @@ class RepoReportData:
 class WeeklyReportData:
     """Everything one week's retro needs to render.
 
-    ``coaching`` is a placeholder for the LLM advice #24-#28 add later
-    (post-mvp, out of scope here) - it is always `None` today.
-    `render_report_markdown` must produce a complete, four-section report
-    with it unset; see AGENTS.md's determinism rule ("`render` must work
-    with `coaching = None`. Always.").
+    ``coaching`` carries the LLM advice built by `portfolio.coach.get_coaching` (#26) -
+    a `CoachingResult` (every repo in `repos` landing in exactly one of
+    `advice`/`unavailable`) on a successful parse, or `None` on total failure/not
+    attempted (`--no-llm`, #27). `report.py`'s command wiring still always passes
+    `coaching=None` today - actually calling `get_coaching` and threading a real
+    result through is #27's job, not #26's. `render_report_markdown` must produce a
+    complete, four-section report with it unset; see AGENTS.md's determinism rule
+    ("`render` must work with `coaching = None`. Always.").
     """
 
     week: str
     repos: list[RepoReportData] = field(default_factory=list)
     new_repos: list[NewRepo] = field(default_factory=list)
-    coaching: str | None = None
+    coaching: CoachingResult | None = None
 
 
 def abandoned_count(repos: list[RepoReportData] | list[dict]) -> int:

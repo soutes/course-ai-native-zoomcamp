@@ -29,11 +29,14 @@ here.
 
 from __future__ import annotations
 
+import json
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
 from django.conf import settings as django_settings
+from rich.markup import escape as escape_markup
 
 if TYPE_CHECKING:
     from portfolio.services.render import RepoReportData, WeeklyReportData
@@ -271,3 +274,123 @@ def send_batched_request(client: CoachClient, report: WeeklyReportData) -> dict[
     """
     messages = build_batched_request(report)
     return client.chat_completion(messages)
+
+
+# --- response parsing and CoachingResult (#26, docs/decisions.md D25) --------------
+
+# Any advice string longer than this is truncated (with a trailing marker) before
+# being stored - never a named-nowhere magic number, matching
+# `MAX_COMMIT_SUBJECTS_PER_REPO`'s pattern above.
+MAX_ADVICE_CHARS = 500
+
+_TRUNCATION_MARKER = "... [truncated]"
+
+
+@dataclass
+class CoachingResult:
+    """The parsed, per-repo outcome of one batched coaching request (D25).
+
+    Every repo in the `WeeklyReportData.repos` that was sent lands in exactly one of
+    `advice` (a usable, capped, escaped advice string) or `unavailable` (sent, but no
+    usable advice came back for it) - never silently absent from both. A repo name
+    that appears in the model's response but was never sent is dropped, not added to
+    either collection.
+    """
+
+    advice: dict[str, str] = field(default_factory=dict)
+    unavailable: list[str] = field(default_factory=list)
+
+
+def _strip_markdown_fence(text: str) -> str:
+    """Strip one leading/trailing markdown code fence (```` ```json ```` or ```` ``` ````).
+
+    Only a single fence wrapping the whole content is recognized - if present, the
+    fence lines themselves are dropped and the text between them is returned for
+    `json.loads`. Content with no fence is returned unchanged.
+    """
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _parsed_advice_object(response: dict[str, Any]) -> dict[str, Any] | None:
+    """Recover the flat `{"repo-name": "advice text"}` object from a raw response.
+
+    Returns `None` (total failure, per D25) when `choices[0].message.content` is
+    missing/not a string, when the content is not valid JSON after fence-stripping,
+    or when it parses to something other than a JSON object (e.g. a bare array or
+    string) - `json.loads` succeeding is not enough on its own.
+    """
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+    if not isinstance(content, str):
+        return None
+
+    try:
+        parsed = json.loads(_strip_markdown_fence(content))
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+
+    return parsed
+
+
+def get_coaching(report: WeeklyReportData, client: CoachClient) -> CoachingResult | None:
+    """Get per-repo coaching advice for `report`, or `None` on any failure.
+
+    Calls `send_batched_request(client, report)` itself (#26 is the first issue to
+    actually invoke it against real report data). Never raises: `CoachRequestError`
+    and any other exception `chat_completion`/`send_batched_request` can raise are
+    caught here and resolve to `None` - identical to what `--no-llm` (#27) already
+    produces, per AGENTS.md's determinism rule and D25.
+
+    A response that fails to parse as the expected flat, repo-keyed JSON object
+    (missing content, non-JSON, fenced-but-still-broken, or valid JSON that is not an
+    object) is also a total failure and returns `None`. Once parsed, every repo in
+    `report.repos` is resolved individually: a missing key, or a value that is not a
+    non-empty string, puts that repo in `unavailable`; everything else is stripped,
+    truncated to `MAX_ADVICE_CHARS`, escaped the same way `render.py` escapes other
+    GitHub-sourced text (`rich.markup.escape`), and stored in `advice`. A key naming a
+    repo that was never sent is dropped silently.
+    """
+    try:
+        response = send_batched_request(client, report)
+    except Exception:
+        return None
+
+    parsed = _parsed_advice_object(response)
+    if parsed is None:
+        return None
+
+    advice: dict[str, str] = {}
+    unavailable: list[str] = []
+
+    for repo in sorted(report.repos, key=lambda r: r.repo):
+        value = parsed.get(repo.repo)
+        if not isinstance(value, str):
+            unavailable.append(repo.repo)
+            continue
+
+        cleaned = value.strip()
+        if not cleaned:
+            unavailable.append(repo.repo)
+            continue
+
+        if len(cleaned) > MAX_ADVICE_CHARS:
+            cleaned = cleaned[:MAX_ADVICE_CHARS].rstrip() + _TRUNCATION_MARKER
+
+        advice[repo.repo] = escape_markup(cleaned)
+
+    return CoachingResult(advice=advice, unavailable=unavailable)
