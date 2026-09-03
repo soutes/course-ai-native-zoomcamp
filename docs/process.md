@@ -1,6 +1,17 @@
 - Tasks are GitHub issues, one at a time
 - Commit regularly
 
+Scope
+
+- Every open issue carries exactly one of two labels: `mvp` or `post-mvp`
+- `mvp` - Phase 0 and Phase 1 of `backlog.md`: issues 7, 11-17, 33, 36. This is
+  the smallest slice where `render` works with `coaching = None`, so the app
+  is useful before the LLM layer exists
+- `post-mvp` - everything else open. Deferred, not deleted - still in
+  `backlog.md`, still filed, just not next
+- The orchestrator never picks up a `post-mvp` issue, even when it is the
+  next one in `backlog.md` order
+
 Background
 
 - `docs/decisions.md` - the calls already made, with reasons. Read it before
