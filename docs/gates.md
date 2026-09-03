@@ -24,8 +24,9 @@ inherits a contradiction.
 - `docs/outdated/` holds the superseded material, and `process.md` says it
   loses to an issue or to `decisions.md`
 
-Exit: `git grep -n '_docs/'` returns nothing, and the working tree is
-committed.
+Exit: `git grep -n '_docs/' -- ':!docs/gates.md'` returns nothing (this file
+names the old path as an example, so it is excluded from its own check), and
+the working tree is committed.
 
 ## Gate 1 - Scope is a label, not an opinion
 
