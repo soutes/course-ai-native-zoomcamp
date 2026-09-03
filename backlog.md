@@ -130,7 +130,7 @@ of grooming later gets a higher number but stays inside the phase it belongs to.
 - [x] **29. Goal drift judgement.** ([#29](https://github.com/soutes/course-ai-native-zoomcamp/issues/29))
   Did this week's commits move toward the stated goal? Done when a week of unrelated work is
   called out as drift.
-- [ ] **30. Stale goal detection.** ([#30](https://github.com/soutes/course-ai-native-zoomcamp/issues/30))
+- [x] **30. Stale goal detection.** ([#30](https://github.com/soutes/course-ai-native-zoomcamp/issues/30))
   A goal unchanged for eight weeks with nothing shipped is flagged as fiction. Done when the
   check runs without the LLM.
 
