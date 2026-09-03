@@ -740,3 +740,190 @@ def test_repo_scoped_run_does_not_run_the_reactivation_pass(monkeypatch, setting
 
     project = Project.objects.get(repo="me/other-shipped")
     assert project.status == Project.Status.SHIPPED
+
+
+# --- --last (#35, D22) ------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_last_flag_requires_no_github_configuration(settings):
+    """#35/D22: GITHUB_USER/TOKEN/EMAILS must never be read or required on the
+    --last path - it must succeed with all three unset."""
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    call_command("report", "--last")  # must not raise
+
+
+@pytest.mark.django_db
+def test_last_flag_with_no_reports_prints_a_message_and_exits_clean(settings, capsys):
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    call_command("report", "--last")  # must not raise / must not attempt to generate
+
+    captured = capsys.readouterr()
+    assert "no weekly report has been generated yet" in captured.out.lower()
+    assert not WeeklyReport.objects.exists()
+
+
+@pytest.mark.django_db
+def test_last_flag_reprints_the_most_recently_generated_report_not_the_highest_week(
+    monkeypatch, settings, tmp_path, capsys
+):
+    """D22: 'most recent' means greatest generated_at, not greatest week label.
+    Generate 2026-W36 first, then 2026-W20 second (out of chronological order) -
+    --last must reprint 2026-W20, the one generated *second*."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE)
+
+    later_week = "2026-W36"
+    earlier_week = "2026-W20"
+
+    fake_gh_1 = FakeGitHub(
+        repos=[make_gh_repo("me/demo")],
+        commits={"me/demo": [make_commit("s1", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh_1)
+    call_command("report", "--week", later_week)
+
+    fake_gh_2 = FakeGitHub(
+        repos=[make_gh_repo("me/demo")],
+        commits={"me/demo": [make_commit("s2", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh_2)
+    call_command("report", "--week", earlier_week)
+
+    assert WeeklyReport.objects.count() == 2
+    expected = WeeklyReport.objects.get(week=earlier_week)
+
+    capsys.readouterr()  # discard output from the two generation runs above
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    call_command("report", "--last")
+
+    captured = capsys.readouterr()
+    assert earlier_week in captured.out
+    assert expected.markdown in captured.out
+    # the row generated second wins even though its week label (2026-W20) sorts
+    # lower than the row generated first (2026-W36).
+    assert later_week not in captured.out
+
+
+@pytest.mark.django_db
+def test_last_flag_prints_stored_markdown_byte_identical(monkeypatch, settings, tmp_path, capsys):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE)
+
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/demo")],
+        commits={"me/demo": [make_commit("s1", day=1)]},
+        diffstats={"s1": CommitStat(sha="s1", additions=10, deletions=2, files_changed=3)},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+    call_command("report", "--week", WEEK)
+
+    row = WeeklyReport.objects.get(week=WEEK)
+
+    capsys.readouterr()  # discard output from the generation run above
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    call_command("report", "--last")
+
+    captured = capsys.readouterr()
+    assert row.markdown in captured.out
+    # the markdown block itself, isolated from the info line above it, is
+    # character-for-character identical to what was stored.
+    tail = captured.out[captured.out.index(row.markdown) :]
+    assert tail.rstrip("\n") == row.markdown.rstrip("\n")
+
+
+@pytest.mark.django_db
+def test_last_flag_makes_zero_github_requests(monkeypatch, settings, tmp_path):
+    """No GitHub/cache object is constructed at all on the --last path."""
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE)
+    fake_gh = FakeGitHub(repos=[make_gh_repo("me/demo")])
+    _install_fake_gh(monkeypatch, fake_gh)
+    call_command("report", "--week", WEEK)
+
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("GitHub must never be constructed on the --last path")
+
+    monkeypatch.setattr(report_cmd, "GitHub", _boom)
+    monkeypatch.setattr(report_cmd, "Cache", _boom)
+
+    call_command("report", "--last")  # must not raise
+
+
+@pytest.mark.django_db
+def test_last_flag_never_writes_to_the_database(monkeypatch, settings, tmp_path):
+    _configure(settings)
+    settings.WEEKLY_CACHE_DIR = tmp_path
+    Project.objects.create(repo="me/demo", status=Project.Status.ACTIVE)
+    fake_gh = FakeGitHub(
+        repos=[make_gh_repo("me/demo")],
+        commits={"me/demo": [make_commit("s1", day=1)]},
+    )
+    _install_fake_gh(monkeypatch, fake_gh)
+    call_command("report", "--week", WEEK)
+
+    row_before = WeeklyReport.objects.get(week=WEEK)
+    markdown_before = row_before.markdown
+    generated_at_before = row_before.generated_at
+    repoweek_count_before = RepoWeek.objects.count()
+    project_before = Project.objects.get(repo="me/demo")
+    status_before = project_before.status
+    status_reason_before = project_before.status_reason
+
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    call_command("report", "--last")
+
+    assert WeeklyReport.objects.count() == 1
+    row_after = WeeklyReport.objects.get(week=WEEK)
+    assert row_after.markdown == markdown_before
+    assert row_after.generated_at == generated_at_before
+    assert RepoWeek.objects.count() == repoweek_count_before
+    project_after = Project.objects.get(repo="me/demo")
+    assert project_after.status == status_before
+    assert project_after.status_reason == status_reason_before
+
+
+@pytest.mark.django_db
+def test_last_flag_with_week_flag_raises_command_error(settings):
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError):
+        call_command("report", "--last", "--week", WEEK)
+
+
+@pytest.mark.django_db
+def test_last_flag_with_repo_flag_raises_command_error(settings):
+    settings.GITHUB_USER = ""
+    settings.GITHUB_TOKEN = ""
+    settings.GITHUB_EMAILS = ""
+
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError):
+        call_command("report", "--last", "--repo", "me/demo")

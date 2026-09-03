@@ -50,8 +50,37 @@ class Command(BaseCommand):
         )
         parser.add_argument("--out", default=None, help="Also write plain markdown to this file.")
         parser.add_argument("--refresh", action="store_true", help="Ignore the cache and re-fetch.")
+        parser.add_argument(
+            "--last",
+            action="store_true",
+            help=(
+                "Reprint the most recently generated WeeklyReport from storage. "
+                "No GitHub request, no LLM request, no token/user/email configuration required."
+            ),
+        )
 
     def handle(self, *args, **options) -> None:
+        if options["last"]:
+            if options["week"]:
+                raise CommandError("--last and --week are contradictory - use one or the other.")
+            if options["repo"]:
+                raise CommandError(
+                    "--last and --repo are contradictory - a --repo run never persists a "
+                    "WeeklyReport row, so there is nothing narrowed to reprint."
+                )
+            row = WeeklyReport.objects.order_by("-generated_at").first()
+            if row is None:
+                self.stdout.write("No weekly report has been generated yet.")
+                return
+            # Plain `self.stdout.write`, not `console.print` or Rich's `Markdown` -
+            # the AC requires printing `row.markdown` back byte-identical to what
+            # was stored, and both of those would reinterpret or reformat it.
+            self.stdout.write(
+                f"Showing the report for {row.week}, generated {row.generated_at.isoformat()}"
+            )
+            self.stdout.write(row.markdown)
+            return
+
         user = settings.GITHUB_USER
         token = settings.GITHUB_TOKEN
         emails = settings.GITHUB_EMAILS
